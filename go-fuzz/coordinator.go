@@ -20,7 +20,7 @@ import (
 type Coordinator struct {
 	mu           sync.Mutex
 	idSeq        int
-	workers      map[int]*CoordinatorWorker
+	workers      *CoordinatorWorker
 	corpus       *PersistentSet
 	suppressions *PersistentSet
 	crashers     *PersistentSet
@@ -52,8 +52,6 @@ func coordinatorMain(ln net.Listener) {
 		m.corpus.add(Artifact{[]byte{}, 0, false})
 	}
 
-	m.workers = make(map[int]*CoordinatorWorker)
-
 	go coordinatorLoop(m)
 
 	s := rpc.NewServer()
@@ -67,13 +65,10 @@ func coordinatorLoop(c *Coordinator) {
 			return
 		}
 		c.mu.Lock()
-		// Nuke dead workers.
-		for id, s := range c.workers {
-			if time.Since(s.lastSync) < syncDeadline {
-				continue
-			}
-			log.Printf("worker %v died", s.id)
-			delete(c.workers, id)
+		// Nuke dead workers. TODO: does this still make sense?
+		if time.Since(c.workers.lastSync) > syncDeadline {
+			log.Printf("worker %v died", c.workers.id)
+			panic("uhoh")
 		}
 		c.mu.Unlock()
 
@@ -108,9 +103,7 @@ func (c *Coordinator) coordinatorStats() coordinatorStats {
 		stats.RestartsDenom = c.statExecs / c.statRestarts
 	}
 
-	for _, w := range c.workers {
-		stats.Workers += uint64(w.procs)
-	}
+	stats.Workers += uint64(c.workers.procs)
 
 	return stats
 }
@@ -173,7 +166,7 @@ func (c *Coordinator) Connect(a *ConnectArgs, r *ConnectRes) error {
 		procs:    a.Procs,
 		lastSync: time.Now(),
 	}
-	c.workers[w.id] = w
+	c.workers = w
 	r.ID = w.id
 	// Give the worker initial corpus.
 	for _, a := range c.corpus.m {
@@ -193,7 +186,7 @@ func (c *Coordinator) NewInput(a *NewInputArgs, r *int) error {
 	c.mu.Lock()
 	defer c.mu.Unlock()
 
-	w := c.workers[a.ID]
+	w := c.workers
 	if w == nil {
 		return errors.New("unknown worker")
 	}
@@ -204,9 +197,8 @@ func (c *Coordinator) NewInput(a *NewInputArgs, r *int) error {
 	}
 	c.lastInput = time.Now()
 	// Queue the input for sending to every worker.
-	for _, w1 := range c.workers {
-		w1.pending = append(w1.pending, CoordinatorInput{a.Data, a.Prio, execCorpus, true, w1 != w})
-	}
+	// TODO: does this make sense with only one worker?
+	w.pending = append(w.pending, CoordinatorInput{a.Data, a.Prio, execCorpus, true, false})
 
 	return nil
 }
@@ -268,7 +260,7 @@ func (c *Coordinator) Sync(a *SyncArgs, r *SyncRes) error {
 	c.mu.Lock()
 	defer c.mu.Unlock()
 
-	w := c.workers[a.ID]
+	w := c.workers
 	if w == nil {
 		return errUnkownWorker
 	}

@@ -71,13 +71,13 @@ type Stats struct {
 }
 
 func newHub(metadata MetaData) *Hub {
-	procs := *flagProcs
+	workers := 1
 	hub := &Hub{
 		corpusSigs:  make(map[Sig]struct{}),
-		triageC:     make(chan CoordinatorInput, procs),
-		newInputC:   make(chan Input, procs),
-		newCrasherC: make(chan NewCrasherArgs, procs),
-		syncC:       make(chan Stats, procs),
+		triageC:     make(chan CoordinatorInput, workers),
+		newInputC:   make(chan Input, workers),
+		newCrasherC: make(chan NewCrasherArgs, workers),
+		syncC:       make(chan Stats, workers),
 	}
 
 	if err := hub.connect(); err != nil {
@@ -136,7 +136,7 @@ func (hub *Hub) connect() error {
 		return err
 	}
 	var res ConnectRes
-	if err := c.Call("Coordinator.Connect", &ConnectArgs{Procs: *flagProcs}, &res); err != nil {
+	if err := c.Call("Coordinator.Connect", &ConnectArgs{Procs: 1}, &res); err != nil {
 		return err
 	}
 

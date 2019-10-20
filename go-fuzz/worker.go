@@ -154,16 +154,14 @@ func workerMain() {
 	shutdownCleanup = append(shutdownCleanup, cleanup)
 
 	hub := newHub(metadata)
-	for i := 0; i < *flagProcs; i++ {
-		w := &Worker{
-			id:      i,
-			hub:     hub,
-			mutator: newMutator(),
-		}
-		w.coverBin = newTestBinary(coverBin, w.periodicCheck, &w.stats, uint8(fnidx))
-		w.sonarBin = newTestBinary(sonarBin, w.periodicCheck, &w.stats, uint8(fnidx))
-		go w.loop()
+	w := &Worker{
+		id:      0,
+		hub:     hub,
+		mutator: newMutator(),
 	}
+	w.coverBin = newTestBinary(coverBin, w.periodicCheck, &w.stats, uint8(fnidx))
+	w.sonarBin = newTestBinary(sonarBin, w.periodicCheck, &w.stats, uint8(fnidx))
+	go w.loop()
 }
 
 func (w *Worker) loop() {
