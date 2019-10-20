@@ -40,18 +40,8 @@ func main() {
 	flag.Parse()
 	var shutdownCancel context.CancelFunc
 	shutdown, shutdownCancel = context.WithCancel(context.Background())
-	go func() {
-		c := make(chan os.Signal, 1)
-		signal.Notify(c, syscall.SIGINT)
-		<-c
-		shutdownCancel()
-		log.Printf("shutting down...")
-		time.Sleep(2 * time.Second)
-		for _, f := range shutdownCleanup {
-			f()
-		}
-		os.Exit(0)
-	}()
+	sigChan := make(chan os.Signal, 1)
+	signal.Notify(sigChan, syscall.SIGINT)
 
 	runtime.GOMAXPROCS(runtime.NumCPU())
 	debug.SetGCPercent(50) // most memory is in large binary blobs
@@ -60,9 +50,6 @@ func main() {
 	*flagWorkdir = expandHomeDir(*flagWorkdir)
 	*flagBin = expandHomeDir(*flagBin)
 
-	if *flagWorkdir == "" {
-		log.Fatalf("-workdir is not set")
-	}
 	if *flagBin == "" {
 		// Try the default. Best effort only.
 		var bin string
@@ -82,7 +69,15 @@ func main() {
 		*flagBin = bin
 	}
 	go coordinatorMain()
-	select {}
+
+	<-sigChan
+	shutdownCancel()
+	log.Printf("shutting down...")
+	time.Sleep(2 * time.Second)
+	for _, f := range shutdownCleanup {
+		f()
+	}
+	os.Exit(0)
 }
 
 // expandHomeDir expands the tilde sign and replaces it
