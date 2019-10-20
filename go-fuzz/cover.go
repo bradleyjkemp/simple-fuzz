@@ -20,7 +20,7 @@ func compareCover(base, cur []byte) bool {
 	if len(base) != CoverSize || len(cur) != CoverSize {
 		log.Fatalf("bad cover table size (%v, %v)", len(base), len(cur))
 	}
-	res := compareCoverBody(base, cur)
+	res := compareCoverDump(base, cur)
 	if false {
 		// This check can legitimately fail if the test process has
 		// some background goroutines that continue to write to the
