@@ -166,7 +166,7 @@ func workerMain(c *Coordinator) {
 
 func (w *Worker) loop() {
 	iter, fuzzSonarIter := 0, 0
-	for atomic.LoadUint32(&shutdown) == 0 {
+	for shutdown.Err() == nil {
 		if len(w.crasherQueue) > 0 {
 			n := len(w.crasherQueue) - 1
 			crash := w.crasherQueue[n]
@@ -620,7 +620,7 @@ func (w *Worker) noteCrasher(data, output []byte, hanged bool) {
 }
 
 func (w *Worker) periodicCheck() {
-	if atomic.LoadUint32(&shutdown) != 0 {
+	if shutdown.Err() != nil {
 		w.shutdown()
 		select {}
 	}

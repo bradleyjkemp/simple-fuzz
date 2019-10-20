@@ -4,6 +4,7 @@
 package main
 
 import (
+	"context"
 	"flag"
 	"log"
 	"os"
@@ -12,7 +13,6 @@ import (
 	"path/filepath"
 	"runtime"
 	"runtime/debug"
-	"sync/atomic"
 	"syscall"
 	"time"
 
@@ -32,19 +32,19 @@ var (
 	flagSonar             = flag.Bool("sonar", true, "use sonar hints")
 	flagV                 = flag.Int("v", 0, "verbosity level")
 
-	shutdown        uint32
-	shutdownC       = make(chan struct{})
+	shutdown        context.Context
 	shutdownCleanup []func()
 )
 
 func main() {
 	flag.Parse()
+	var shutdownCancel context.CancelFunc
+	shutdown, shutdownCancel = context.WithCancel(context.Background())
 	go func() {
 		c := make(chan os.Signal, 1)
 		signal.Notify(c, syscall.SIGINT)
 		<-c
-		atomic.StoreUint32(&shutdown, 1)
-		close(shutdownC)
+		shutdownCancel()
 		log.Printf("shutting down...")
 		time.Sleep(2 * time.Second)
 		for _, f := range shutdownCleanup {

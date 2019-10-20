@@ -10,7 +10,6 @@ import (
 	"log"
 	"path/filepath"
 	"sync"
-	"sync/atomic"
 	"time"
 )
 
@@ -56,7 +55,7 @@ func coordinatorMain() *Coordinator {
 
 func coordinatorLoop(c *Coordinator) {
 	for range time.NewTicker(3 * time.Second).C {
-		if atomic.LoadUint32(&shutdown) != 0 {
+		if shutdown.Err() != nil {
 			return
 		}
 		c.mu.Lock()

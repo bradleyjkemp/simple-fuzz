@@ -247,7 +247,7 @@ retry:
 	go func() {
 		select {
 		case <-t.downC:
-		case <-shutdownC:
+		case <-shutdown.Done():
 			t.cmd.Process.Signal(syscall.SIGKILL)
 		}
 	}()
