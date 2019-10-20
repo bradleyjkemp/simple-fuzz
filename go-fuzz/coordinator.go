@@ -5,20 +5,15 @@ package main
 
 import (
 	"bytes"
-	"encoding/json"
 	"errors"
 	"fmt"
 	"log"
 	"net"
-	"net/http"
-	_ "net/http/pprof"
 	"net/rpc"
 	"path/filepath"
 	"sync"
 	"sync/atomic"
 	"time"
-
-	"github.com/stephens2424/writerset"
 )
 
 // Coordinator manages persistent fuzzer state like input corpus and crashers.
@@ -35,8 +30,6 @@ type Coordinator struct {
 	statExecs     uint64
 	statRestarts  uint64
 	coverFullness int
-
-	statsWriters *writerset.WriterSet
 }
 
 // CoordinatorWorker represents coordinator's view of a worker.
@@ -50,7 +43,6 @@ type CoordinatorWorker struct {
 // coordinatorMain is entry function for coordinator.
 func coordinatorMain(ln net.Listener) {
 	m := &Coordinator{}
-	m.statsWriters = writerset.New()
 	m.startTime = time.Now()
 	m.lastInput = time.Now()
 	m.suppressions = newPersistentSet(filepath.Join(*flagWorkdir, "suppressions"))
@@ -94,22 +86,8 @@ func (c *Coordinator) broadcastStats() {
 
 	// log to stdout
 	log.Println(stats.String())
-
-	// write to any http clients
-	b, err := json.Marshal(stats)
-	if err != nil {
-		panic(err)
-	}
-
-	fmt.Fprintf(c.statsWriters, "event: ping\ndata: %s\n\n", string(b))
-	c.statsWriters.Flush()
 }
 
-func (c *Coordinator) eventSource(w http.ResponseWriter, r *http.Request) {
-	w.Header().Set("Content-Type", "text/event-stream")
-	w.WriteHeader(http.StatusOK)
-	<-c.statsWriters.Add(w)
-}
 
 func (c *Coordinator) coordinatorStats() coordinatorStats {
 	c.mu.Lock()
