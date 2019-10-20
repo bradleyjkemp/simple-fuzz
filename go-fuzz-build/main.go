@@ -27,7 +27,7 @@ import (
 
 	"golang.org/x/tools/go/packages"
 
-	. "github.com/bradleyjkemp/simple-fuzz/internal/go-fuzz-types"
+	. "github.com/bradleyjkemp/simple-fuzz/go-fuzz-types"
 )
 
 var (

@@ -9,7 +9,7 @@ import (
 	"strconv"
 
 	. "github.com/bradleyjkemp/simple-fuzz/go-fuzz-defs"
-	"github.com/bradleyjkemp/simple-fuzz/go-fuzz/internal/pcg"
+	"github.com/bradleyjkemp/simple-fuzz/go-fuzz/pcg"
 )
 
 type Mutator struct {
