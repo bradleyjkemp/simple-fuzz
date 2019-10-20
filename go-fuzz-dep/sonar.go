@@ -9,7 +9,7 @@ import (
 	"sync/atomic"
 	"unsafe"
 
-	. "github.com/dvyukov/go-fuzz/go-fuzz-defs"
+	. "github.com/bradleyjkemp/simple-fuzz/go-fuzz-defs"
 )
 
 var (

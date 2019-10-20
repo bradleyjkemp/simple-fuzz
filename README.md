@@ -84,25 +84,25 @@ Put the initial corpus into the workdir/corpus directory (in our case
 Consider committing the generated inputs to your source control system, this
 will allow you to restart go-fuzz without losing previous work.
 
-The [go-fuzz-corpus repository](https://github.com/dvyukov/go-fuzz-corpus) contains 
+The [go-fuzz-corpus repository](https://github.com/bradleyjkemp/simple-fuzz-corpus) contains 
 a bunch of examples of test functions and initial input corpuses for various packages.
 
 The next step is to get go-fuzz:
 
 ```
-$ go get -u github.com/dvyukov/go-fuzz/go-fuzz github.com/dvyukov/go-fuzz/go-fuzz-build
+$ go get -u github.com/bradleyjkemp/simple-fuzz/go-fuzz github.com/bradleyjkemp/simple-fuzz/go-fuzz-build
 ```
 
 Then, download the corpus and build the test program with necessary instrumentation:
 ```
-$ go get -d github.com/dvyukov/go-fuzz-corpus
-$ cd $GOPATH/src/github.com/dvyukov/go-fuzz-corpus
+$ go get -d github.com/bradleyjkemp/simple-fuzz-corpus
+$ cd $GOPATH/src/github.com/bradleyjkemp/simple-fuzz-corpus
 $ cd png
 $ go-fuzz-build
 ```
 This will produce png-fuzz.zip archive.
 
-Note that go-fuzz [does not support modules yet](https://github.com/dvyukov/go-fuzz/issues/195).
+Note that go-fuzz [does not support modules yet](https://github.com/bradleyjkemp/simple-fuzz/issues/195).
 `go-fuzz-build` disables modules by setting environment variable `GO111MODULE=off` during the build.
 
 Now we are ready to go:
@@ -145,7 +145,7 @@ instead of go-fuzz (requires linux).
 Sample usage:
 
 ```
-$ cd $GOPATH/src/github.com/dvyukov/go-fuzz-corpus/fmt
+$ cd $GOPATH/src/github.com/bradleyjkemp/simple-fuzz-corpus/fmt
 $ go-fuzz-build -libfuzzer  # produces fmt.a
 $ clang -fsanitize=fuzzer fmt.a -o fmt.libfuzzer
 $ ./fmt.libfuzzer
@@ -196,11 +196,11 @@ $ go-fuzz -bin=./png-fuzz.zip -worker=127.0.0.1:8745 -procs=10
 
 go-fuzz repository history was recently rewritten to exclude examples directory
 to reduce total repository size and download time (see
-[#88](https://github.com/dvyukov/go-fuzz/issues/88),
-[#114](https://github.com/dvyukov/go-fuzz/issues/114) and
-https://github.com/dvyukov/go-fuzz-corpus). Unfortunately, that means that
+[#88](https://github.com/bradleyjkemp/simple-fuzz/issues/88),
+[#114](https://github.com/bradleyjkemp/simple-fuzz/issues/114) and
+https://github.com/bradleyjkemp/simple-fuzz-corpus). Unfortunately, that means that
 `go get -u` command will fail if you had a previous version installed.
-Please remove $GOPATH/github.com/dvyukov/go-fuzz before running `go get` again.
+Please remove $GOPATH/github.com/bradleyjkemp/simple-fuzz before running `go get` again.
 
 ## Credits and technical details
 

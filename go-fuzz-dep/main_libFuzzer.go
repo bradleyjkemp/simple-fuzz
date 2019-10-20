@@ -9,7 +9,7 @@ package gofuzzdep
 import (
 	"unsafe"
 
-	. "github.com/dvyukov/go-fuzz/go-fuzz-defs"
+	. "github.com/bradleyjkemp/simple-fuzz/go-fuzz-defs"
 )
 
 func Initialize(coverTabPtr unsafe.Pointer, coverTabSize uint64) {

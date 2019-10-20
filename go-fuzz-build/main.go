@@ -27,7 +27,7 @@ import (
 
 	"golang.org/x/tools/go/packages"
 
-	. "github.com/dvyukov/go-fuzz/internal/go-fuzz-types"
+	. "github.com/bradleyjkemp/simple-fuzz/internal/go-fuzz-types"
 )
 
 var (
@@ -274,7 +274,7 @@ func (c *Context) loadPkg(pkg string) {
 	// * the target package, obviously
 	// * go-fuzz-dep, since we use it for instrumentation
 	// * reflect, if we are using libfuzzer, since its generated main function requires it
-	loadpkgs := []string{pkg, "github.com/dvyukov/go-fuzz/go-fuzz-dep"}
+	loadpkgs := []string{pkg, "github.com/bradleyjkemp/simple-fuzz/go-fuzz-dep"}
 	if *flagLibFuzzer {
 		loadpkgs = append(loadpkgs, "reflect")
 	}
@@ -528,7 +528,7 @@ func (c *Context) calcIgnore() {
 	// noisy (because they are low level), and/or not interesting.
 	// We could manually maintain this list, but that makes go-fuzz-build
 	// fragile in the face of internal standard library package changes.
-	roots := c.packagesNamed("runtime", "github.com/dvyukov/go-fuzz/go-fuzz-dep")
+	roots := c.packagesNamed("runtime", "github.com/bradleyjkemp/simple-fuzz/go-fuzz-dep")
 	packages.Visit(roots, func(p *packages.Package) bool {
 		c.ignore[p.PkgPath] = true
 		return true
@@ -572,15 +572,15 @@ func (c *Context) copyFuzzDep() {
 	// directly into the go-fuzz-dep package.
 	newDir := filepath.Join(c.workdir, "goroot", "src", "go-fuzz-dep")
 	c.mkdirAll(newDir)
-	dep := c.packageNamed("github.com/dvyukov/go-fuzz/go-fuzz-dep")
+	dep := c.packageNamed("github.com/bradleyjkemp/simple-fuzz/go-fuzz-dep")
 	for _, f := range dep.GoFiles {
 		data := c.readFile(f)
 		// Eliminate the dot import.
-		data = bytes.Replace(data, []byte(`. "github.com/dvyukov/go-fuzz/go-fuzz-defs"`), nil, -1)
+		data = bytes.Replace(data, []byte(`. "github.com/bradleyjkemp/simple-fuzz/go-fuzz-defs"`), nil, -1)
 		c.writeFile(filepath.Join(newDir, filepath.Base(f)), data)
 	}
 
-	defs := c.packageNamed("github.com/dvyukov/go-fuzz/go-fuzz-defs")
+	defs := c.packageNamed("github.com/bradleyjkemp/simple-fuzz/go-fuzz-defs")
 	for _, f := range defs.GoFiles {
 		data := c.readFile(f)
 		// Adjust package name to match go-fuzz-deps.
