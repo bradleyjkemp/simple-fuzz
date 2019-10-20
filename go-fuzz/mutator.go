@@ -5,19 +5,21 @@ package main
 
 import (
 	"encoding/binary"
+	"math/bits"
+	"math/rand"
 	"sort"
 	"strconv"
+	"time"
 
 	. "github.com/bradleyjkemp/simple-fuzz/go-fuzz-defs"
-	"github.com/bradleyjkemp/simple-fuzz/go-fuzz/pcg"
 )
 
 type Mutator struct {
-	r *pcg.Rand
+	r *rand.Rand
 }
 
 func newMutator() *Mutator {
-	return &Mutator{r: pcg.New()}
+	return &Mutator{r: rand.New(rand.NewSource(time.Now().Unix()))}
 }
 
 func (m *Mutator) rand(n int) int {
@@ -29,8 +31,17 @@ func (m *Mutator) randbig() int64 {
 	return int64(m.r.Uint32() >> 2)
 }
 
+func (m *Mutator) bool() bool {
+	return m.r.Int63()%2 == 0
+}
+
+// Exp2 generates n with probability 1/2^(n+1).
+func (m *Mutator) Exp2() int {
+	return bits.TrailingZeros32(m.r.Uint32())
+}
+
 func (m *Mutator) randByteOrder() binary.ByteOrder {
-	if m.r.Bool() {
+	if m.bool() {
 		return binary.LittleEndian
 	}
 	return binary.BigEndian
@@ -51,7 +62,7 @@ func (m *Mutator) mutate(data []byte, ro *ROData) []byte {
 	corpus := ro.corpus
 	res := make([]byte, len(data))
 	copy(res, data)
-	nm := 1 + m.r.Exp2()
+	nm := 1 + m.Exp2()
 	for iter := 0; iter < nm; iter++ {
 		switch m.rand(20) {
 		case 0:
@@ -148,7 +159,7 @@ func (m *Mutator) mutate(data []byte, ro *ROData) []byte {
 			}
 			pos := m.rand(len(res))
 			v := byte(m.rand(35) + 1)
-			if m.r.Bool() {
+			if m.bool() {
 				res[pos] += v
 			} else {
 				res[pos] -= v
@@ -162,7 +173,7 @@ func (m *Mutator) mutate(data []byte, ro *ROData) []byte {
 			pos := m.rand(len(res) - 1)
 			buf := res[pos:]
 			v := uint16(m.rand(35) + 1)
-			if m.r.Bool() {
+			if m.bool() {
 				v = 0 - v
 			}
 			enc := m.randByteOrder()
@@ -176,7 +187,7 @@ func (m *Mutator) mutate(data []byte, ro *ROData) []byte {
 			pos := m.rand(len(res) - 3)
 			buf := res[pos:]
 			v := uint32(m.rand(35) + 1)
-			if m.r.Bool() {
+			if m.bool() {
 				v = 0 - v
 			}
 			enc := m.randByteOrder()
@@ -190,7 +201,7 @@ func (m *Mutator) mutate(data []byte, ro *ROData) []byte {
 			pos := m.rand(len(res) - 7)
 			buf := res[pos:]
 			v := uint64(m.rand(35) + 1)
-			if m.r.Bool() {
+			if m.bool() {
 				v = 0 - v
 			}
 			enc := m.randByteOrder()
@@ -351,7 +362,7 @@ func (m *Mutator) mutate(data []byte, ro *ROData) []byte {
 				continue
 			}
 			var lit []byte
-			if len(ro.strLits) != 0 && m.r.Bool() {
+			if len(ro.strLits) != 0 && m.bool() {
 				lit = []byte(ro.strLits[m.rand(len(ro.strLits))])
 			} else {
 				lit = ro.intLits[m.rand(len(ro.intLits))]
@@ -372,7 +383,7 @@ func (m *Mutator) mutate(data []byte, ro *ROData) []byte {
 				continue
 			}
 			var lit []byte
-			if len(ro.strLits) != 0 && m.r.Bool() {
+			if len(ro.strLits) != 0 && m.bool() {
 				lit = []byte(ro.strLits[m.rand(len(ro.strLits))])
 			} else {
 				lit = ro.intLits[m.rand(len(ro.intLits))]
