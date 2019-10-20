@@ -13,6 +13,7 @@ import (
 	"log"
 	"math/bits"
 	"os"
+	"path/filepath"
 	"strings"
 	"sync/atomic"
 	"time"
@@ -94,7 +95,7 @@ func newWorker(c *Coordinator) *Worker {
 			}
 			f.Close()
 			os.Remove(f.Name())
-			f, err = os.OpenFile(f.Name()+".exe", os.O_WRONLY|os.O_CREATE|os.O_EXCL, 0700)
+			f, err = os.OpenFile(f.Name()+filepath.Base(zipf.Name), os.O_WRONLY|os.O_CREATE|os.O_EXCL, 0700)
 			if err != nil {
 				log.Fatalf("failed to create temp file: %v", err)
 			}
