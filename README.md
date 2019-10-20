@@ -136,24 +136,6 @@ value should be less than ~5000, otherwise fuzzer can miss new interesting input
 due to hash collisions. And finally ```uptime``` is uptime of the process. This same
 information is also served via http (see the ```-http``` flag).
 
-## libFuzzer support
-
-go-fuzz-build can also generate an archive file
-that can be used with [libFuzzer](https://llvm.org/docs/LibFuzzer.html)
-instead of go-fuzz (requires linux).
-
-Sample usage:
-
-```
-$ cd $GOPATH/src/github.com/bradleyjkemp/simple-fuzz-corpus/fmt
-$ go-fuzz-build -libfuzzer  # produces fmt.a
-$ clang -fsanitize=fuzzer fmt.a -o fmt.libfuzzer
-$ ./fmt.libfuzzer
-```
-
-When run with `-libfuzzer`, go-fuzz-build adds the additional build tag
-`gofuzz_libfuzzer` when building code.
-
 ## Continuous Fuzzing
 
 Just as unit-testing, fuzzing is better done continuously.

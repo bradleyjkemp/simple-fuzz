@@ -37,16 +37,12 @@ var (
 	flagWork      = flag.Bool("work", false, "don't remove working directory")
 	flagRace      = flag.Bool("race", false, "enable race detector")
 	flagCPU       = flag.Bool("cpuprofile", false, "generate cpu profile in cpu.pprof")
-	flagLibFuzzer = flag.Bool("libfuzzer", false, "output static archive for use with libFuzzer")
 	flagBuildX    = flag.Bool("x", false, "print the commands if build fails")
 	flagPreserve  = flag.String("preserve", "", "a comma-separated list of import paths not to instrument")
 )
 
 func makeTags() string {
 	tags := "gofuzz"
-	if *flagLibFuzzer {
-		tags += " gofuzz_libfuzzer"
-	}
 	if *flagRace {
 		tags += " race"
 	}
@@ -87,9 +83,6 @@ func main() {
 	if *flagFunc != "" && !isFuzzFuncName(*flagFunc) {
 		c.failf("provided -func=%v, but %v is not a fuzz function name", *flagFunc, *flagFunc)
 	}
-	if *flagLibFuzzer && *flagRace {
-		c.failf("-race and -libfuzzer are incompatible")
-	}
 
 	c.startProfiling()  // start pprof as requested
 	c.loadPkg(pkg)      // load and typecheck pkg
@@ -102,9 +95,6 @@ func main() {
 
 	if *flagOut == "" {
 		ext := ".zip"
-		if *flagLibFuzzer {
-			ext = ".a"
-		}
 		*flagOut = c.pkgs[0].Name + "-fuzz" + ext
 	}
 
@@ -126,12 +116,6 @@ func main() {
 	// See also https://golang.org/issue/29824.
 	lits := c.gatherLiterals()
 	var blocks, sonar []CoverBlock
-
-	if *flagLibFuzzer {
-		archive := c.buildInstrumentedBinary(&blocks, nil)
-		c.moveFile(archive, *flagOut)
-		return
-	}
 
 	coverBin := c.buildInstrumentedBinary(&blocks, nil)
 	sonarBin := c.buildInstrumentedBinary(nil, &sonar)
@@ -275,9 +259,6 @@ func (c *Context) loadPkg(pkg string) {
 	// * go-fuzz-dep, since we use it for instrumentation
 	// * reflect, if we are using libfuzzer, since its generated main function requires it
 	loadpkgs := []string{pkg, "github.com/bradleyjkemp/simple-fuzz/go-fuzz-dep"}
-	if *flagLibFuzzer {
-		loadpkgs = append(loadpkgs, "reflect")
-	}
 	initial, err := packages.Load(cfg, loadpkgs...)
 	if err != nil {
 		c.failf("could not load packages: %v", err)
@@ -343,8 +324,6 @@ func (c *Context) loadPkg(pkg string) {
 		//   ...for libfuzzer, that's not fine, as there is no way to specify one later.
 		if len(c.allFuncs) == 1 {
 			*flagFunc = c.allFuncs[0]
-		} else if *flagLibFuzzer {
-			c.failf("must specify a fuzz function with -libfuzzer, found: %v", strings.Join(c.allFuncs, ", "))
 		}
 	}
 }
@@ -440,7 +419,7 @@ func (c *Context) populateWorkdir() {
 
 	// TODO: See if we can avoid making toolchain copies,
 	// using some combination of env vars and toolexec.
-	if *flagLibFuzzer || *flagRace {
+	if *flagRace {
 		c.copyDir(filepath.Join(c.GOROOT, "src", "runtime", "cgo"), filepath.Join(c.workdir, "goroot", "src", "runtime", "cgo"))
 	}
 	if *flagRace {
@@ -495,9 +474,6 @@ func (c *Context) buildInstrumentedBinary(blocks *[]CoverBlock, sonar *[]CoverBl
 	}
 	if *flagRace {
 		args = append(args, "-race")
-	}
-	if *flagLibFuzzer {
-		args = append(args, "-buildmode=c-archive")
 	}
 	if c.cmdGoHasTrimPath {
 		args = append(args, "-trimpath")
@@ -590,13 +566,9 @@ func (c *Context) copyFuzzDep() {
 }
 
 func (c *Context) funcMain() []byte {
-	t := mainSrc
-	if *flagLibFuzzer {
-		t = mainSrcLibFuzzer
-	}
 	dot := map[string]interface{}{"Pkg": c.fuzzpkg.PkgPath, "AllFuncs": c.allFuncs, "DefaultFunc": *flagFunc}
 	buf := new(bytes.Buffer)
-	if err := t.Execute(buf, dot); err != nil {
+	if err := mainSrc.Execute(buf, dot); err != nil {
 		c.failf("could not execute template: %v", err)
 	}
 	return buf.Bytes()
@@ -812,45 +784,3 @@ func main() {
 }
 `))
 
-var mainSrcLibFuzzer = template.Must(template.New("main").Parse(`
-package main
-
-import (
-	"unsafe"
-	"reflect"
-	target "{{.Pkg}}"
-	dep "go-fuzz-dep"
-)
-
-// #cgo CFLAGS: -Wall -Werror
-// #ifdef __linux__
-// __attribute__((weak, section("__libfuzzer_extra_counters")))
-// #else
-// #error Currently only Linux is supported
-// #endif
-// unsigned char GoFuzzCoverageCounters[65536];
-import "C"
-
-//export LLVMFuzzerInitialize
-func LLVMFuzzerInitialize(argc uintptr, argv uintptr) int {
-	dep.Initialize(unsafe.Pointer(&C.GoFuzzCoverageCounters[0]), 65536)
-	return 0
-}
-
-//export LLVMFuzzerTestOneInput
-func LLVMFuzzerTestOneInput(data uintptr, size uint64) int {
-	sh := &reflect.SliceHeader{
-	    Data: data,
-	    Len:  int(size),
-	    Cap:  int(size),
-	}
-
-	input := *(*[]byte)(unsafe.Pointer(sh))
-	target.{{.DefaultFunc}}(input)
-
-	return 0
-}
-
-func main() {
-}
-`))
