@@ -693,35 +693,3 @@ func extractSuppression(out []byte) []byte {
 	}
 	return supp
 }
-
-func reverse(data []byte) []byte {
-	tmp := make([]byte, len(data))
-	for i, v := range data {
-		tmp[len(data)-i-1] = v
-	}
-	return tmp
-}
-
-func increment(data []byte) []byte {
-	tmp := make([]byte, len(data))
-	copy(tmp, data)
-	for i, v := range data {
-		tmp[i] = v + 1
-		if v != 0xff {
-			break
-		}
-	}
-	return tmp
-}
-
-func decrement(data []byte) []byte {
-	tmp := make([]byte, len(data))
-	copy(tmp, data)
-	for i, v := range data {
-		tmp[i] = v - 1
-		if v != 0 {
-			break
-		}
-	}
-	return tmp
-}
