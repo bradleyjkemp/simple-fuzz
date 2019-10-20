@@ -12,8 +12,6 @@ import (
 	"sync/atomic"
 	"time"
 
-	"github.com/bradleyjkemp/simple-fuzz/go-fuzz/versifier"
-
 	. "github.com/bradleyjkemp/simple-fuzz/go-fuzz-defs"
 	. "github.com/bradleyjkemp/simple-fuzz/go-fuzz-types"
 )
@@ -65,7 +63,6 @@ type ROData struct {
 	intLits      [][]byte // int literals in testee
 	coverBlocks  map[int][]CoverBlock
 	sonarSites   []SonarSite
-	verse        *versifier.Verse
 }
 
 type Stats struct {
@@ -248,9 +245,6 @@ func (hub *Hub) loop() {
 			hub.updateMaxCover(input.cover)
 			ro1.corpusCover = makeCopy(ro.corpusCover)
 			hub.corpusCoverSize = updateMaxCover(ro1.corpusCover, input.cover)
-			if input.res > 0 || input.typ == execBootstrap {
-				ro1.verse = versifier.BuildVerse(ro.verse, input.data)
-			}
 			hub.ro.Store(ro1)
 			hub.corpusOrigins[input.typ]++
 

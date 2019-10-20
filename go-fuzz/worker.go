@@ -167,7 +167,7 @@ func workerMain() {
 }
 
 func (w *Worker) loop() {
-	iter, fuzzSonarIter, versifierSonarIter := 0, 0, 0
+	iter, fuzzSonarIter := 0, 0
 	for atomic.LoadUint32(&shutdown) == 0 {
 		if len(w.crasherQueue) > 0 {
 			n := len(w.crasherQueue) - 1
@@ -227,7 +227,7 @@ func (w *Worker) loop() {
 
 		// 9 out of 10 iterations are random fuzzing.
 		iter++
-		if iter%10 != 0 || ro.verse == nil {
+		if iter%10 != 0 {
 			data, depth := w.mutator.generate(ro)
 			// Every 1000-th iteration goes to sonar.
 			fuzzSonarIter++
@@ -238,21 +238,6 @@ func (w *Worker) loop() {
 			} else {
 				// Plain old blind fuzzing.
 				w.testInput(data, depth, execFuzz)
-			}
-		} else {
-			// 1 out of 10 iterations goes to versifier.
-			data := ro.verse.Rhyme()
-			const maxSize = MaxInputSize - 5*SonarMaxLen // need some gap for sonar replacements
-			if len(data) > maxSize {
-				data = data[:maxSize]
-			}
-			// Every 100-th versifier input goes to sonar.
-			versifierSonarIter++
-			if *flagSonar && versifierSonarIter%100 == 0 {
-				sonar := w.testInputSonar(data, 0)
-				w.processSonarData(data, sonar, 0, false)
-			} else {
-				w.testInput(data, 0, execVersifier)
 			}
 		}
 	}
