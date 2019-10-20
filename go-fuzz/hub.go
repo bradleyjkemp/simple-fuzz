@@ -6,7 +6,6 @@ package main
 import (
 	"fmt"
 	"log"
-	"path/filepath"
 	"sync"
 	"sync/atomic"
 	"time"
@@ -107,8 +106,6 @@ func newHub(coordinator *Coordinator, metadata MetaData) *Hub {
 	}
 	hub.ro.Store(ro)
 
-	go hub.loop()
-
 	return hub
 }
 
@@ -141,110 +138,6 @@ func (hub *Hub) sync(newInputs []CoordinatorInput) *SyncStatus {
 	}
 
 	return args
-}
-
-func (hub *Hub) loop() {
-	// Local buffer helps to avoid deadlocks on chan overflows.
-	var triageC chan CoordinatorInput
-	var triageInput CoordinatorInput
-
-	for {
-		if len(hub.triageQueue) > 0 && triageC == nil {
-			n := len(hub.triageQueue) - 1
-			triageInput = hub.triageQueue[n]
-			hub.triageQueue[n] = CoordinatorInput{}
-			hub.triageQueue = hub.triageQueue[:n]
-			triageC = hub.triageC
-		}
-
-		select {
-		case <-time.After(time.Second):
-			// massive hack because the hub gets created before the coordinator populates
-			// the triage queue and so this loop deadlocks
-
-		case triageC <- triageInput:
-			// Send new input to worker for triage.
-			if len(hub.triageQueue) > 0 {
-				n := len(hub.triageQueue) - 1
-				triageInput = hub.triageQueue[n]
-				hub.triageQueue[n] = CoordinatorInput{}
-				hub.triageQueue = hub.triageQueue[:n]
-			} else {
-				triageC = nil
-				triageInput = CoordinatorInput{}
-			}
-
-		case input := <-hub.newInputC:
-			// New interesting input from worker.
-			ro := hub.ro.Load().(*ROData)
-			if !compareCover(ro.corpusCover, input.cover) {
-				break
-			}
-			sig := hash(input.data)
-			if _, ok := hub.corpusSigs[sig]; ok {
-				break
-			}
-
-			// Passed deduplication, taking it.
-			if *flagV >= 2 {
-				log.Printf("hub received new input [%v]%v mine=%v", len(input.data), hash(input.data), input.mine)
-			}
-			hub.corpusSigs[sig] = struct{}{}
-			ro1 := new(ROData)
-			*ro1 = *ro
-			// Assign it the default score, but mark corpus for score recalculation.
-			hub.corpusStale = true
-			scoreSum := 0
-			if len(ro1.corpus) > 0 {
-				scoreSum = ro1.corpus[len(ro1.corpus)-1].runningScoreSum
-			}
-			input.score = defScore
-			input.runningScoreSum = scoreSum + defScore
-			ro1.corpus = append(ro1.corpus, input)
-			hub.updateMaxCover(input.cover)
-			ro1.corpusCover = makeCopy(ro.corpusCover)
-			hub.corpusCoverSize = updateMaxCover(ro1.corpusCover, input.cover)
-			hub.ro.Store(ro1)
-			hub.corpusOrigins[input.typ]++
-
-			if input.mine {
-				if err := hub.coordinator.NewInput(&NewInputArgs{hub.id, input.data, uint64(input.depth)}, nil); err != nil {
-					log.Printf("failed to connect to coordinator: %v, killing worker", err)
-					return
-				}
-			}
-
-			if *flagDumpCover {
-				dumpCover(filepath.Join(*flagWorkdir, "coverprofile"), ro.coverBlocks, ro.corpusCover)
-			}
-
-		case crash := <-hub.newCrasherC:
-			// New crasher from worker. Woohoo!
-			if crash.Hanging || !*flagDup {
-				ro := hub.ro.Load().(*ROData)
-				ro1 := new(ROData)
-				*ro1 = *ro
-				if crash.Hanging {
-					ro1.badInputs = make(map[Sig]struct{})
-					for k, v := range ro.badInputs {
-						ro1.badInputs[k] = v
-					}
-					ro1.badInputs[hash(crash.Data)] = struct{}{}
-				}
-				if !*flagDup {
-					ro1.suppressions = make(map[Sig]struct{})
-					for k, v := range ro.suppressions {
-						ro1.suppressions[k] = v
-					}
-					ro1.suppressions[hash(crash.Suppression)] = struct{}{}
-				}
-				hub.ro.Store(ro1)
-			}
-			if err := hub.coordinator.NewCrasher(&crash, nil); err != nil {
-				log.Printf("new crasher call failed: %v", err)
-			}
-		}
-	}
 }
 
 // Preliminary cover update to prevent new input thundering herd.
