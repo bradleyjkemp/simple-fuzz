@@ -15,7 +15,6 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
-	"sync/atomic"
 	"time"
 	"unsafe"
 
@@ -186,22 +185,18 @@ func (w *Worker) loop() {
 				log.Printf("worker %v triages coordinator input [%v]%v minimized=%v smashed=%v", w.id, len(input.Data), hash(input.Data), input.Minimized, input.Smashed)
 			}
 			w.triageInput(input)
-			for {
-				x := atomic.LoadUint32(&w.hub.initialTriage)
-				if x == 0 || atomic.CompareAndSwapUint32(&w.hub.initialTriage, x, x-1) {
-					break
-				}
+			if w.hub.initialTriage > 0 {
+				w.hub.initialTriage--
 			}
-			continue
-		default:
 		}
 
-		if atomic.LoadUint32(&w.hub.initialTriage) != 0 {
+		if w.hub.initialTriage != 0 {
 			// Other worker are still triaging initial inputs.
 			// Wait until they finish, otherwise we can generate
 			// as if new interesting inputs that are not actually new
 			// and thus unnecessary inflate corpus on every run.
-			time.Sleep(100 * time.Millisecond)
+			// TODO: delete this sleep ASAP
+			time.Sleep(50 * time.Millisecond)
 			continue
 		}
 
