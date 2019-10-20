@@ -45,7 +45,6 @@ func main() {
 
 	runtime.GOMAXPROCS(runtime.NumCPU())
 	debug.SetGCPercent(50) // most memory is in large binary blobs
-	lowerProcessPrio()
 
 	*flagWorkdir = expandHomeDir(*flagWorkdir)
 	*flagBin = expandHomeDir(*flagBin)

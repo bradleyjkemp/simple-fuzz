@@ -12,10 +12,6 @@ import (
 	"syscall"
 )
 
-func lowerProcessPrio() {
-	syscall.Setpriority(syscall.PRIO_PROCESS, 0, 19)
-}
-
 type Mapping struct {
 	f *os.File
 }

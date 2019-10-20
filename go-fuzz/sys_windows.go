@@ -13,10 +13,6 @@ import (
 	"unsafe"
 )
 
-func lowerProcessPrio() {
-	// TODO: implement me
-}
-
 type Mapping struct {
 	mapping syscall.Handle
 	addr    uintptr
