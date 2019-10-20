@@ -31,26 +31,13 @@ import (
 )
 
 var (
-	flagTag       = flag.String("tags", "", "a space-separated list of build tags to consider satisfied during the build")
 	flagOut       = flag.String("o", "", "output file")
 	flagFunc      = flag.String("func", "", "preferred entry function")
 	flagWork      = flag.Bool("work", false, "don't remove working directory")
-	flagRace      = flag.Bool("race", false, "enable race detector")
 	flagCPU       = flag.Bool("cpuprofile", false, "generate cpu profile in cpu.pprof")
 	flagBuildX    = flag.Bool("x", false, "print the commands if build fails")
 	flagPreserve  = flag.String("preserve", "", "a comma-separated list of import paths not to instrument")
 )
-
-func makeTags() string {
-	tags := "gofuzz"
-	if *flagRace {
-		tags += " race"
-	}
-	if len(*flagTag) > 0 {
-		tags += " " + *flagTag
-	}
-	return tags
-}
 
 // basePackagesConfig returns a base golang.org/x/tools/go/packages.Config
 // that clients can then modify and use for calls to go/packages.
@@ -226,7 +213,6 @@ func (c *Context) loadPkg(pkg string) {
 	// See https://golang.org/issue/30826 and https://golang.org/issue/30828.
 	rescfg := basePackagesConfig()
 	rescfg.Mode = packages.NeedName
-	rescfg.BuildFlags = []string{"-tags", makeTags()}
 	respkgs, err := packages.Load(rescfg, pkg)
 	if err != nil {
 		c.failf("could not resolve package %q: %v", pkg, err)
@@ -249,7 +235,6 @@ func (c *Context) loadPkg(pkg string) {
 	// of invalid code than trying to compile instrumented code.
 	cfg := basePackagesConfig()
 	cfg.Mode = packages.LoadAllSyntax
-	cfg.BuildFlags = []string{"-tags", makeTags()}
 	// use custom ParseFile in order to get comments
 	cfg.ParseFile = func(fset *token.FileSet, filename string, src []byte) (*ast.File, error) {
 		return parser.ParseFile(fset, filename, src, parser.ParseComments)
@@ -419,13 +404,6 @@ func (c *Context) populateWorkdir() {
 
 	// TODO: See if we can avoid making toolchain copies,
 	// using some combination of env vars and toolexec.
-	if *flagRace {
-		c.copyDir(filepath.Join(c.GOROOT, "src", "runtime", "cgo"), filepath.Join(c.workdir, "goroot", "src", "runtime", "cgo"))
-	}
-	if *flagRace {
-		c.copyDir(filepath.Join(c.GOROOT, "src", "runtime", "race"), filepath.Join(c.workdir, "goroot", "src", "runtime", "race"))
-		c.copyDir(filepath.Join(c.GOROOT, "src", "sync", "atomic"), filepath.Join(c.workdir, "goroot", "src", "sync", "atomic"))
-	}
 	c.copyDir(filepath.Join(c.GOROOT, "pkg", "tool"), filepath.Join(c.workdir, "goroot", "pkg", "tool"))
 	if _, err := os.Stat(filepath.Join(c.GOROOT, "pkg", "include")); err == nil {
 		c.copyDir(filepath.Join(c.GOROOT, "pkg", "include"), filepath.Join(c.workdir, "goroot", "pkg", "include"))
@@ -464,16 +442,13 @@ func (c *Context) buildInstrumentedBinary(blocks *[]CoverBlock, sonar *[]CoverBl
 	c.instrumentPackages(blocks, sonar)
 	mainPkg := c.createFuzzMain()
 	outf := c.tempFile()
-	args := []string{"build", "-tags", makeTags()}
+	args := []string{"build"}
 	if *flagBuildX {
 		args = append(args, "-x")
 
 		if *flagWork {
 			args = append(args, "-work")
 		}
-	}
-	if *flagRace {
-		args = append(args, "-race")
 	}
 	if c.cmdGoHasTrimPath {
 		args = append(args, "-trimpath")
