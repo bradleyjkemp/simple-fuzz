@@ -16,8 +16,7 @@ import (
 )
 
 const (
-	syncPeriod   = 3 * time.Second
-	syncDeadline = 100 * syncPeriod
+	syncPeriod = 3 * time.Second
 
 	minScore = 1.0
 	maxScore = 1000.0
@@ -46,7 +45,6 @@ type Hub struct {
 	triageC     chan CoordinatorInput
 	newInputC   chan Input
 	newCrasherC chan NewCrasherArgs
-	syncC       chan Stats
 
 	stats         Stats
 	corpusOrigins [execCount]uint64
@@ -76,7 +74,6 @@ func newHub(coordinator *Coordinator, metadata MetaData) *Hub {
 		triageC:     make(chan CoordinatorInput, workers),
 		newInputC:   make(chan Input, workers),
 		newCrasherC: make(chan NewCrasherArgs, workers),
-		syncC:       make(chan Stats, workers),
 	}
 
 	coverBlocks := make(map[int][]CoverBlock)
@@ -176,11 +173,6 @@ func (hub *Hub) loop() {
 				triageC = nil
 				triageInput = CoordinatorInput{}
 			}
-
-		case s := <-hub.syncC:
-			// Sync from a worker.
-			hub.stats.execs += s.execs
-			hub.stats.restarts += s.restarts
 
 		case input := <-hub.newInputC:
 			// New interesting input from worker.

@@ -235,8 +235,8 @@ func (c *Coordinator) sync() error {
 	a := c.worker.hub.sync(w.pending)
 	w.pending = nil
 
-	c.statExecs += a.Execs
-	c.statRestarts += a.Restarts
+	c.statExecs = c.worker.stats.execs
+	c.statRestarts = c.worker.stats.restarts
 	if c.coverFullness < a.CoverFullness {
 		c.coverFullness = a.CoverFullness
 	}
