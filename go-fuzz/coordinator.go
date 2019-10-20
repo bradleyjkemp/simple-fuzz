@@ -14,7 +14,6 @@ import (
 	_ "net/http/pprof"
 	"net/rpc"
 	"path/filepath"
-	"runtime"
 	"sync"
 	"sync/atomic"
 	"time"
@@ -62,27 +61,12 @@ func coordinatorMain(ln net.Listener) {
 	}
 
 	m.workers = make(map[int]*CoordinatorWorker)
-	coordinatorListen(m)
 
 	go coordinatorLoop(m)
 
 	s := rpc.NewServer()
 	s.Register(m)
 	s.Accept(ln)
-}
-
-func coordinatorListen(c *Coordinator) {
-	if *flagHTTP != "" {
-		http.HandleFunc("/eventsource", c.eventSource)
-		http.HandleFunc("/", c.index)
-
-		go func() {
-			fmt.Printf("Serving statistics on http://%s/\n", *flagHTTP)
-			panic(http.ListenAndServe(*flagHTTP, nil))
-		}()
-	} else {
-		runtime.MemProfileRate = 0
-	}
 }
 
 func coordinatorLoop(c *Coordinator) {
@@ -125,13 +109,6 @@ func (c *Coordinator) eventSource(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "text/event-stream")
 	w.WriteHeader(http.StatusOK)
 	<-c.statsWriters.Add(w)
-}
-
-func (c *Coordinator) index(w http.ResponseWriter, r *http.Request) {
-	if r.URL.Path == "/" {
-		r.URL.Path = "/stats.html"
-	}
-	http.FileServer(assetFS()).ServeHTTP(w, r)
 }
 
 func (c *Coordinator) coordinatorStats() coordinatorStats {
