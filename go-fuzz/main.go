@@ -19,18 +19,10 @@ import (
 	"golang.org/x/tools/go/packages"
 )
 
-//go:generate go build github.com/bradleyjkemp/simple-fuzz/go-fuzz/vendor/github.com/elazarl/go-bindata-assetfs/go-bindata-assetfs
-//go:generate ./go-bindata-assetfs assets/...
-//go:generate goimports -w bindata_assetfs.go
-//go:generate rm go-bindata-assetfs
-
 var (
 	flagWorkdir           = flag.String("workdir", ".", "dir with persistent work data")
 	flagTimeout           = flag.Int("timeout", 10, "test timeout, in seconds")
 	flagMinimize          = flag.Duration("minimize", 1*time.Minute, "time limit for input minimization")
-	flagCoordinator       = flag.String("coordinator", "", "coordinator mode (value is coordinator address)")
-	flagWorker            = flag.String("worker", "", "worker mode (value is coordinator address)")
-	flagConnectionTimeout = flag.Duration("connectiontimeout", 1*time.Minute, "time limit for worker to try to connect coordinator")
 	flagBin               = flag.String("bin", "", "test binary built with go-fuzz-build")
 	flagFunc              = flag.String("func", "", "function to fuzz")
 	flagDumpCover         = flag.Bool("dumpcover", false, "dump coverage profile into workdir")
@@ -39,7 +31,6 @@ var (
 	flagCoverCounters     = flag.Bool("covercounters", true, "use coverage hit counters")
 	flagSonar             = flag.Bool("sonar", true, "use sonar hints")
 	flagV                 = flag.Int("v", 0, "verbosity level")
-	flagHTTP              = flag.String("http", "", "HTTP server listen address (coordinator mode only)")
 
 	shutdown        uint32
 	shutdownC       = make(chan struct{})
@@ -48,13 +39,6 @@ var (
 
 func main() {
 	flag.Parse()
-	if *flagCoordinator != "" && *flagWorker != "" {
-		log.Fatalf("both -coordinator and -worker are specified")
-	}
-	if *flagHTTP != "" && *flagWorker != "" {
-		log.Fatalf("both -http and -worker are specified")
-	}
-
 	go func() {
 		c := make(chan os.Signal, 1)
 		signal.Notify(c, syscall.SIGINT)
