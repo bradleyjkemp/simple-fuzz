@@ -83,8 +83,10 @@ func main() {
 		}
 		*flagBin = bin
 	}
-	go workerMain(c)
-
+	w := newWorker(c)
+	c.hub = w.hub
+	go coordinatorLoop(c)
+	go w.loop()
 	select {}
 }
 

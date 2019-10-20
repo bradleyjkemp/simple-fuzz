@@ -71,7 +71,7 @@ type Input struct {
 	runningScoreSum int
 }
 
-func workerMain(c *Coordinator) {
+func newWorker(c *Coordinator) *Worker{
 	zipr, err := zip.OpenReader(*flagBin)
 	if err != nil {
 		log.Fatalf("failed to open bin file: %v", err)
@@ -161,7 +161,7 @@ func workerMain(c *Coordinator) {
 	}
 	w.coverBin = newTestBinary(coverBin, w.periodicCheck, &w.stats, uint8(fnidx))
 	w.sonarBin = newTestBinary(sonarBin, w.periodicCheck, &w.stats, uint8(fnidx))
-	go w.loop()
+	return w
 }
 
 func (w *Worker) loop() {

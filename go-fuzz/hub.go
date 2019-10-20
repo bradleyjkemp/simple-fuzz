@@ -131,12 +131,42 @@ func (hub *Hub) connect() error {
 	return nil
 }
 
+func (hub *Hub) sync(newInputs []CoordinatorInput) *SyncStatus {
+	// Sync with the coordinator.
+	if *flagV >= 1 {
+		ro := hub.ro.Load().(*ROData)
+		log.Printf("hub: corpus=%v bootstrap=%v fuzz=%v minimize=%v versifier=%v smash=%v sonar=%v",
+			len(ro.corpus), hub.corpusOrigins[execBootstrap]+hub.corpusOrigins[execCorpus],
+			hub.corpusOrigins[execFuzz]+hub.corpusOrigins[execSonar],
+			hub.corpusOrigins[execMinimizeInput]+hub.corpusOrigins[execMinimizeCrasher],
+			hub.corpusOrigins[execVersifier], hub.corpusOrigins[execSmash],
+			hub.corpusOrigins[execSonarHint])
+	}
+	args := &SyncStatus{
+		ID:            hub.id,
+		Execs:         hub.stats.execs,
+		Restarts:      hub.stats.restarts,
+		CoverFullness: hub.corpusCoverSize,
+	}
+	hub.stats.execs = 0
+	hub.stats.restarts = 0
+
+	if len(newInputs) > 0 {
+		hub.triageQueue = append(hub.triageQueue, newInputs...)
+	}
+	if hub.corpusStale {
+		hub.updateScores()
+		hub.corpusStale = false
+	}
+
+	return args
+}
+
 func (hub *Hub) loop() {
 	// Local buffer helps to avoid deadlocks on chan overflows.
 	var triageC chan CoordinatorInput
 	var triageInput CoordinatorInput
 
-	syncTicker := time.NewTicker(syncPeriod).C
 	for {
 		if len(hub.triageQueue) > 0 && triageC == nil {
 			n := len(hub.triageQueue) - 1
@@ -147,41 +177,6 @@ func (hub *Hub) loop() {
 		}
 
 		select {
-		case <-syncTicker:
-			// Sync with the coordinator.
-			if *flagV >= 1 {
-				ro := hub.ro.Load().(*ROData)
-				log.Printf("hub: corpus=%v bootstrap=%v fuzz=%v minimize=%v versifier=%v smash=%v sonar=%v",
-					len(ro.corpus), hub.corpusOrigins[execBootstrap]+hub.corpusOrigins[execCorpus],
-					hub.corpusOrigins[execFuzz]+hub.corpusOrigins[execSonar],
-					hub.corpusOrigins[execMinimizeInput]+hub.corpusOrigins[execMinimizeCrasher],
-					hub.corpusOrigins[execVersifier], hub.corpusOrigins[execSmash],
-					hub.corpusOrigins[execSonarHint])
-			}
-			args := &SyncArgs{
-				ID:            hub.id,
-				Execs:         hub.stats.execs,
-				Restarts:      hub.stats.restarts,
-				CoverFullness: hub.corpusCoverSize,
-			}
-			hub.stats.execs = 0
-			hub.stats.restarts = 0
-			var res SyncRes
-			if err := hub.coordinator.Sync(args, &res); err != nil {
-				log.Printf("sync call failed: %v, reconnection to coordinator", err)
-				if err := hub.connect(); err != nil {
-					log.Printf("failed to connect to coordinator: %v, killing worker", err)
-					return
-				}
-			}
-			if len(res.Inputs) > 0 {
-				hub.triageQueue = append(hub.triageQueue, res.Inputs...)
-			}
-			if hub.corpusStale {
-				hub.updateScores()
-				hub.corpusStale = false
-			}
-
 		case triageC <- triageInput:
 			// Send new input to workers for triage.
 			if len(hub.triageQueue) > 0 {

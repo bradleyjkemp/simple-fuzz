@@ -27,6 +27,7 @@ type Coordinator struct {
 	statExecs     uint64
 	statRestarts  uint64
 	coverFullness int
+	hub *Hub
 }
 
 // CoordinatorWorker represents coordinator's view of a worker.
@@ -49,7 +50,6 @@ func coordinatorMain() *Coordinator {
 		m.corpus.add(Artifact{[]byte{}, 0, false})
 	}
 
-	go coordinatorLoop(m)
 	return m
 }
 
@@ -65,6 +65,8 @@ func coordinatorLoop(c *Coordinator) {
 			panic("uhoh")
 		}
 		c.mu.Unlock()
+
+		c.sync()
 
 		c.broadcastStats()
 	}
@@ -235,22 +237,18 @@ func (c *Coordinator) NewCrasher(a *NewCrasherArgs, r *int) error {
 	return nil
 }
 
-type SyncArgs struct {
+type SyncStatus struct {
 	ID            int
 	Execs         uint64
 	Restarts      uint64
 	CoverFullness int
 }
 
-type SyncRes struct {
-	Inputs []CoordinatorInput // new interesting inputs
-}
-
 var errUnkownWorker = errors.New("unknown worker")
 
 // Sync is a periodic sync with a worker.
 // Worker sends statistics. Coordinator returns new inputs.
-func (c *Coordinator) Sync(a *SyncArgs, r *SyncRes) error {
+func (c *Coordinator) sync() error {
 	c.mu.Lock()
 	defer c.mu.Unlock()
 
@@ -258,13 +256,14 @@ func (c *Coordinator) Sync(a *SyncArgs, r *SyncRes) error {
 	if w == nil {
 		return errUnkownWorker
 	}
+	a := c.hub.sync(w.pending)
+	w.pending = nil
+
 	c.statExecs += a.Execs
 	c.statRestarts += a.Restarts
 	if c.coverFullness < a.CoverFullness {
 		c.coverFullness = a.CoverFullness
 	}
 	w.lastSync = time.Now()
-	r.Inputs = w.pending
-	w.pending = nil
 	return nil
 }
