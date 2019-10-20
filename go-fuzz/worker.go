@@ -71,7 +71,7 @@ type Input struct {
 	runningScoreSum int
 }
 
-func newWorker(c *Coordinator) *Worker{
+func newWorker(c *Coordinator) *Worker {
 	zipr, err := zip.OpenReader(*flagBin)
 	if err != nil {
 		log.Fatalf("failed to open bin file: %v", err)
@@ -196,7 +196,7 @@ func (w *Worker) loop() {
 		}
 
 		if atomic.LoadUint32(&w.hub.initialTriage) != 0 {
-			// Other workers are still triaging initial inputs.
+			// Other worker are still triaging initial inputs.
 			// Wait until they finish, otherwise we can generate
 			// as if new interesting inputs that are not actually new
 			// and thus unnecessary inflate corpus on every run.

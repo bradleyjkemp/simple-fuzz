@@ -20,17 +20,17 @@ import (
 )
 
 var (
-	flagWorkdir           = flag.String("workdir", ".", "dir with persistent work data")
-	flagTimeout           = flag.Int("timeout", 10, "test timeout, in seconds")
-	flagMinimize          = flag.Duration("minimize", 1*time.Minute, "time limit for input minimization")
-	flagBin               = flag.String("bin", "", "test binary built with go-fuzz-build")
-	flagFunc              = flag.String("func", "", "function to fuzz")
-	flagDumpCover         = flag.Bool("dumpcover", false, "dump coverage profile into workdir")
-	flagDup               = flag.Bool("dup", false, "collect duplicate crashers")
-	flagTestOutput        = flag.Bool("testoutput", false, "print test binary output to stdout (for debugging only)")
-	flagCoverCounters     = flag.Bool("covercounters", true, "use coverage hit counters")
-	flagSonar             = flag.Bool("sonar", true, "use sonar hints")
-	flagV                 = flag.Int("v", 0, "verbosity level")
+	flagWorkdir       = flag.String("workdir", ".", "dir with persistent work data")
+	flagTimeout       = flag.Int("timeout", 10, "test timeout, in seconds")
+	flagMinimize      = flag.Duration("minimize", 1*time.Minute, "time limit for input minimization")
+	flagBin           = flag.String("bin", "", "test binary built with go-fuzz-build")
+	flagFunc          = flag.String("func", "", "function to fuzz")
+	flagDumpCover     = flag.Bool("dumpcover", false, "dump coverage profile into workdir")
+	flagDup           = flag.Bool("dup", false, "collect duplicate crashers")
+	flagTestOutput    = flag.Bool("testoutput", false, "print test binary output to stdout (for debugging only)")
+	flagCoverCounters = flag.Bool("covercounters", true, "use coverage hit counters")
+	flagSonar         = flag.Bool("sonar", true, "use sonar hints")
+	flagV             = flag.Int("v", 0, "verbosity level")
 
 	shutdown        context.Context
 	shutdownCleanup []func()
@@ -63,8 +63,6 @@ func main() {
 	if *flagWorkdir == "" {
 		log.Fatalf("-workdir is not set")
 	}
-	c := coordinatorMain()
-
 	if *flagBin == "" {
 		// Try the default. Best effort only.
 		var bin string
@@ -83,10 +81,7 @@ func main() {
 		}
 		*flagBin = bin
 	}
-	w := newWorker(c)
-	c.hub = w.hub
-	go coordinatorLoop(c)
-	go w.loop()
+	go coordinatorMain()
 	select {}
 }
 

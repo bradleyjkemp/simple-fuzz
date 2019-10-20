@@ -15,19 +15,19 @@ import (
 
 // Coordinator manages persistent fuzzer state like input corpus and crashers.
 type Coordinator struct {
-	mu           sync.Mutex
-	idSeq        int
-	workers      *CoordinatorWorker
-	corpus       *PersistentSet
-	suppressions *PersistentSet
-	crashers     *PersistentSet
+	mu                sync.Mutex
+	idSeq             int
+	coordinatorWorker *CoordinatorWorker
+	worker            *Worker
+	corpus            *PersistentSet
+	suppressions      *PersistentSet
+	crashers          *PersistentSet
 
 	startTime     time.Time
 	lastInput     time.Time
 	statExecs     uint64
 	statRestarts  uint64
 	coverFullness int
-	hub *Hub
 }
 
 // CoordinatorWorker represents coordinator's view of a worker.
@@ -39,32 +39,39 @@ type CoordinatorWorker struct {
 }
 
 // coordinatorMain is entry function for coordinator.
-func coordinatorMain() *Coordinator {
-	m := &Coordinator{}
-	m.startTime = time.Now()
-	m.lastInput = time.Now()
-	m.suppressions = newPersistentSet(filepath.Join(*flagWorkdir, "suppressions"))
-	m.crashers = newPersistentSet(filepath.Join(*flagWorkdir, "crashers"))
-	m.corpus = newPersistentSet(filepath.Join(*flagWorkdir, "corpus"))
-	if len(m.corpus.m) == 0 {
-		m.corpus.add(Artifact{[]byte{}, 0, false})
+func coordinatorMain() {
+	c := &Coordinator{}
+	c.startTime = time.Now()
+	c.lastInput = time.Now()
+	c.suppressions = newPersistentSet(filepath.Join(*flagWorkdir, "suppressions"))
+	c.crashers = newPersistentSet(filepath.Join(*flagWorkdir, "crashers"))
+	c.corpus = newPersistentSet(filepath.Join(*flagWorkdir, "corpus"))
+	if len(c.corpus.m) == 0 {
+		c.corpus.add(Artifact{[]byte{}, 0, false})
 	}
 
-	return m
+	c.coordinatorWorker = &CoordinatorWorker{
+		id:       0,
+		procs:    1,
+		pending:  nil,
+		lastSync: time.Time{},
+	}
+	c.worker = newWorker(c)
+	// Give the worker initial corpus.
+	for _, a := range c.corpus.m {
+		c.worker.hub.triageQueue = append(c.worker.hub.triageQueue, CoordinatorInput{a.data, a.meta, execCorpus, !a.user, true})
+	}
+	c.worker.hub.initialTriage = uint32(len(c.corpus.m))
+
+	go coordinatorLoop(c)
 }
 
 func coordinatorLoop(c *Coordinator) {
+	go c.worker.loop()
 	for range time.NewTicker(3 * time.Second).C {
 		if shutdown.Err() != nil {
 			return
 		}
-		c.mu.Lock()
-		// Nuke dead workers. TODO: does this still make sense?
-		if time.Since(c.workers.lastSync) > syncDeadline {
-			log.Printf("worker %v died", c.workers.id)
-			panic("uhoh")
-		}
-		c.mu.Unlock()
 
 		c.sync()
 
@@ -79,7 +86,6 @@ func (c *Coordinator) broadcastStats() {
 	log.Println(stats.String())
 }
 
-
 func (c *Coordinator) coordinatorStats() coordinatorStats {
 	c.mu.Lock()
 	defer c.mu.Unlock()
@@ -92,14 +98,13 @@ func (c *Coordinator) coordinatorStats() coordinatorStats {
 		LastNewInputTime: c.lastInput,
 		Execs:            c.statExecs,
 		Cover:            uint64(c.coverFullness),
+		Workers:          1,
 	}
 
 	// Print stats line.
 	if c.statExecs != 0 && c.statRestarts != 0 {
 		stats.RestartsDenom = c.statExecs / c.statRestarts
 	}
-
-	stats.Workers += uint64(c.workers.procs)
 
 	return stats
 }
@@ -111,7 +116,7 @@ type coordinatorStats struct {
 }
 
 func (s coordinatorStats) String() string {
-	return fmt.Sprintf("workers: %v, corpus: %v (%v ago), crashers: %v,"+
+	return fmt.Sprintf("worker: %v, corpus: %v (%v ago), crashers: %v,"+
 		" restarts: 1/%v, execs: %v (%.0f/sec), cover: %v, uptime: %v",
 		s.Workers, s.Corpus, fmtDuration(time.Since(s.LastNewInputTime)),
 		s.Crashers, s.RestartsDenom, s.Execs, s.ExecsPerSec(), s.Cover,
@@ -133,15 +138,6 @@ func fmtDuration(d time.Duration) string {
 	}
 }
 
-type ConnectArgs struct {
-	Procs int
-}
-
-type ConnectRes struct {
-	ID     int
-	Corpus []CoordinatorInput
-}
-
 // CoordinatorInput is description of input that is passed between coordinator and worker.
 type CoordinatorInput struct {
 	Data      []byte
@@ -149,26 +145,6 @@ type CoordinatorInput struct {
 	Type      execType
 	Minimized bool
 	Smashed   bool
-}
-
-// Connect attaches new worker to coordinator.
-func (c *Coordinator) Connect(a *ConnectArgs, r *ConnectRes) error {
-	c.mu.Lock()
-	defer c.mu.Unlock()
-
-	c.idSeq++
-	w := &CoordinatorWorker{
-		id:       c.idSeq,
-		procs:    a.Procs,
-		lastSync: time.Now(),
-	}
-	c.workers = w
-	r.ID = w.id
-	// Give the worker initial corpus.
-	for _, a := range c.corpus.m {
-		r.Corpus = append(r.Corpus, CoordinatorInput{a.data, a.meta, execCorpus, !a.user, true})
-	}
-	return nil
 }
 
 type NewInputArgs struct {
@@ -182,7 +158,7 @@ func (c *Coordinator) NewInput(a *NewInputArgs, r *int) error {
 	c.mu.Lock()
 	defer c.mu.Unlock()
 
-	w := c.workers
+	w := c.coordinatorWorker
 	if w == nil {
 		return errors.New("unknown worker")
 	}
@@ -252,11 +228,11 @@ func (c *Coordinator) sync() error {
 	c.mu.Lock()
 	defer c.mu.Unlock()
 
-	w := c.workers
+	w := c.coordinatorWorker
 	if w == nil {
 		return errUnkownWorker
 	}
-	a := c.hub.sync(w.pending)
+	a := c.worker.hub.sync(w.pending)
 	w.pending = nil
 
 	c.statExecs += a.Execs

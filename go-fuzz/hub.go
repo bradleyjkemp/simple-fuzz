@@ -16,16 +16,16 @@ import (
 )
 
 const (
-	syncPeriod             = 3 * time.Second
-	syncDeadline           = 100 * syncPeriod
+	syncPeriod   = 3 * time.Second
+	syncDeadline = 100 * syncPeriod
 
 	minScore = 1.0
 	maxScore = 1000.0
 	defScore = 10.0
 )
 
-// Hub contains data shared between all workers in the process (e.g. corpus).
-// This reduces memory consumption for highly parallel workers.
+// Hub contains data shared between all worker in the process (e.g. corpus).
+// This reduces memory consumption for highly parallel worker.
 // Hub also handles communication with the coordinator.
 type Hub struct {
 	id          int
@@ -79,10 +79,6 @@ func newHub(coordinator *Coordinator, metadata MetaData) *Hub {
 		syncC:       make(chan Stats, workers),
 	}
 
-	if err := hub.connect(); err != nil {
-		log.Fatalf("failed to connect to coordinator: %v", err)
-	}
-
 	coverBlocks := make(map[int][]CoverBlock)
 	for _, b := range metadata.Blocks {
 		coverBlocks[b.ID] = append(coverBlocks[b.ID], b)
@@ -117,18 +113,6 @@ func newHub(coordinator *Coordinator, metadata MetaData) *Hub {
 	go hub.loop()
 
 	return hub
-}
-
-func (hub *Hub) connect() error {
-	var res ConnectRes
-	if err := hub.coordinator.Connect(&ConnectArgs{Procs: 1}, &res); err != nil {
-		return err
-	}
-
-	hub.id = res.ID
-	hub.initialTriage = uint32(len(res.Corpus))
-	hub.triageQueue = res.Corpus
-	return nil
 }
 
 func (hub *Hub) sync(newInputs []CoordinatorInput) *SyncStatus {
@@ -177,8 +161,12 @@ func (hub *Hub) loop() {
 		}
 
 		select {
+		case <-time.After(time.Second):
+			// massive hack because the hub gets created before the coordinator populates
+			// the triage queue and so this loop deadlocks
+
 		case triageC <- triageInput:
-			// Send new input to workers for triage.
+			// Send new input to worker for triage.
 			if len(hub.triageQueue) > 0 {
 				n := len(hub.triageQueue) - 1
 				triageInput = hub.triageQueue[n]
@@ -195,7 +183,7 @@ func (hub *Hub) loop() {
 			hub.stats.restarts += s.restarts
 
 		case input := <-hub.newInputC:
-			// New interesting input from workers.
+			// New interesting input from worker.
 			ro := hub.ro.Load().(*ROData)
 			if !compareCover(ro.corpusCover, input.cover) {
 				break
@@ -229,11 +217,8 @@ func (hub *Hub) loop() {
 
 			if input.mine {
 				if err := hub.coordinator.NewInput(&NewInputArgs{hub.id, input.data, uint64(input.depth)}, nil); err != nil {
-					log.Printf("new input call failed: %v, reconnecting to coordinator", err)
-					if err := hub.connect(); err != nil {
-						log.Printf("failed to connect to coordinator: %v, killing worker", err)
-						return
-					}
+					log.Printf("failed to connect to coordinator: %v, killing worker", err)
+					return
 				}
 			}
 
@@ -242,7 +227,7 @@ func (hub *Hub) loop() {
 			}
 
 		case crash := <-hub.newCrasherC:
-			// New crasher from workers. Woohoo!
+			// New crasher from worker. Woohoo!
 			if crash.Hanging || !*flagDup {
 				ro := hub.ro.Load().(*ROData)
 				ro1 := new(ROData)
