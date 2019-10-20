@@ -71,7 +71,7 @@ type Input struct {
 	runningScoreSum int
 }
 
-func workerMain() {
+func workerMain(c *Coordinator) {
 	zipr, err := zip.OpenReader(*flagBin)
 	if err != nil {
 		log.Fatalf("failed to open bin file: %v", err)
@@ -153,7 +153,7 @@ func workerMain() {
 
 	shutdownCleanup = append(shutdownCleanup, cleanup)
 
-	hub := newHub(metadata)
+	hub := newHub(c, metadata)
 	w := &Worker{
 		id:      0,
 		hub:     hub,

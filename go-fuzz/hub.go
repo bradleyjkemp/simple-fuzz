@@ -6,7 +6,6 @@ package main
 import (
 	"fmt"
 	"log"
-	"net/rpc"
 	"path/filepath"
 	"sync"
 	"sync/atomic"
@@ -19,7 +18,6 @@ import (
 const (
 	syncPeriod             = 3 * time.Second
 	syncDeadline           = 100 * syncPeriod
-	connectionPollInterval = 100 * time.Millisecond
 
 	minScore = 1.0
 	maxScore = 1000.0
@@ -31,7 +29,7 @@ const (
 // Hub also handles communication with the coordinator.
 type Hub struct {
 	id          int
-	coordinator *rpc.Client
+	coordinator *Coordinator
 
 	ro atomic.Value // *ROData
 
@@ -70,9 +68,10 @@ type Stats struct {
 	restarts uint64
 }
 
-func newHub(metadata MetaData) *Hub {
+func newHub(coordinator *Coordinator, metadata MetaData) *Hub {
 	workers := 1
 	hub := &Hub{
+		coordinator: coordinator,
 		corpusSigs:  make(map[Sig]struct{}),
 		triageC:     make(chan CoordinatorInput, workers),
 		newInputC:   make(chan Input, workers),
@@ -121,26 +120,11 @@ func newHub(metadata MetaData) *Hub {
 }
 
 func (hub *Hub) connect() error {
-	var c *rpc.Client
-	var err error
-
-	t := time.Now()
-	for {
-		c, err = rpc.Dial("tcp", *flagWorker)
-		if err == nil || time.Since(t) > *flagConnectionTimeout {
-			break
-		}
-		time.Sleep(connectionPollInterval)
-	}
-	if err != nil {
-		return err
-	}
 	var res ConnectRes
-	if err := c.Call("Coordinator.Connect", &ConnectArgs{Procs: 1}, &res); err != nil {
+	if err := hub.coordinator.Connect(&ConnectArgs{Procs: 1}, &res); err != nil {
 		return err
 	}
 
-	hub.coordinator = c
 	hub.id = res.ID
 	hub.initialTriage = uint32(len(res.Corpus))
 	hub.triageQueue = res.Corpus
@@ -183,7 +167,7 @@ func (hub *Hub) loop() {
 			hub.stats.execs = 0
 			hub.stats.restarts = 0
 			var res SyncRes
-			if err := hub.coordinator.Call("Coordinator.Sync", args, &res); err != nil {
+			if err := hub.coordinator.Sync(args, &res); err != nil {
 				log.Printf("sync call failed: %v, reconnection to coordinator", err)
 				if err := hub.connect(); err != nil {
 					log.Printf("failed to connect to coordinator: %v, killing worker", err)
@@ -249,7 +233,7 @@ func (hub *Hub) loop() {
 			hub.corpusOrigins[input.typ]++
 
 			if input.mine {
-				if err := hub.coordinator.Call("Coordinator.NewInput", NewInputArgs{hub.id, input.data, uint64(input.depth)}, nil); err != nil {
+				if err := hub.coordinator.NewInput(&NewInputArgs{hub.id, input.data, uint64(input.depth)}, nil); err != nil {
 					log.Printf("new input call failed: %v, reconnecting to coordinator", err)
 					if err := hub.connect(); err != nil {
 						log.Printf("failed to connect to coordinator: %v, killing worker", err)
@@ -284,7 +268,7 @@ func (hub *Hub) loop() {
 				}
 				hub.ro.Store(ro1)
 			}
-			if err := hub.coordinator.Call("Coordinator.NewCrasher", crash, nil); err != nil {
+			if err := hub.coordinator.NewCrasher(&crash, nil); err != nil {
 				log.Printf("new crasher call failed: %v", err)
 			}
 		}

@@ -6,7 +6,6 @@ package main
 import (
 	"flag"
 	"log"
-	"net"
 	"os"
 	"os/signal"
 	"os/user"
@@ -77,44 +76,30 @@ func main() {
 	*flagWorkdir = expandHomeDir(*flagWorkdir)
 	*flagBin = expandHomeDir(*flagBin)
 
-	if *flagCoordinator != "" || *flagWorker == "" {
-		if *flagWorkdir == "" {
-			log.Fatalf("-workdir is not set")
-		}
-		if *flagCoordinator == "" {
-			*flagCoordinator = "localhost:0"
-		}
-		ln, err := net.Listen("tcp", *flagCoordinator)
-		if err != nil {
-			log.Fatalf("failed to listen: %v", err)
-		}
-		if *flagCoordinator == "localhost:0" && *flagWorker == "" {
-			*flagWorker = ln.Addr().String()
-		}
-		go coordinatorMain(ln)
+	if *flagWorkdir == "" {
+		log.Fatalf("-workdir is not set")
 	}
+	c := coordinatorMain()
 
-	if *flagWorker != "" {
-		if *flagBin == "" {
-			// Try the default. Best effort only.
-			var bin string
-			cfg := new(packages.Config)
-			cfg.Env = append(os.Environ(), "GO111MODULE=off")
-			pkgs, err := packages.Load(cfg, ".")
-			if err == nil && len(pkgs) == 1 {
-				bin = pkgs[0].Name + "-fuzz.zip"
-				_, err := os.Stat(bin)
-				if err != nil {
-					bin = ""
-				}
+	if *flagBin == "" {
+		// Try the default. Best effort only.
+		var bin string
+		cfg := new(packages.Config)
+		cfg.Env = append(os.Environ(), "GO111MODULE=off")
+		pkgs, err := packages.Load(cfg, ".")
+		if err == nil && len(pkgs) == 1 {
+			bin = pkgs[0].Name + "-fuzz.zip"
+			_, err := os.Stat(bin)
+			if err != nil {
+				bin = ""
 			}
-			if bin == "" {
-				log.Fatalf("-bin is not set")
-			}
-			*flagBin = bin
 		}
-		go workerMain()
+		if bin == "" {
+			log.Fatalf("-bin is not set")
+		}
+		*flagBin = bin
 	}
+	go workerMain(c)
 
 	select {}
 }

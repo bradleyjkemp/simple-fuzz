@@ -8,8 +8,6 @@ import (
 	"errors"
 	"fmt"
 	"log"
-	"net"
-	"net/rpc"
 	"path/filepath"
 	"sync"
 	"sync/atomic"
@@ -41,7 +39,7 @@ type CoordinatorWorker struct {
 }
 
 // coordinatorMain is entry function for coordinator.
-func coordinatorMain(ln net.Listener) {
+func coordinatorMain() *Coordinator {
 	m := &Coordinator{}
 	m.startTime = time.Now()
 	m.lastInput = time.Now()
@@ -53,10 +51,7 @@ func coordinatorMain(ln net.Listener) {
 	}
 
 	go coordinatorLoop(m)
-
-	s := rpc.NewServer()
-	s.Register(m)
-	s.Accept(ln)
+	return m
 }
 
 func coordinatorLoop(c *Coordinator) {
