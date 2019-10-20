@@ -625,10 +625,10 @@ func (w *Worker) periodicCheck() {
 		w.shutdown()
 		select {}
 	}
+	w.execs[execTotal] = w.stats.execs
 	if time.Since(w.lastSync) < syncPeriod {
 		return
 	}
-	w.execs[execTotal] = w.stats.execs
 	w.lastSync = time.Now()
 	if *flagV >= 2 {
 		log.Printf("worker %v: triageq=%v execs=%v mininp=%v mincrash=%v triage=%v fuzz=%v versifier=%v smash=%v sonar=%v hint=%v",
