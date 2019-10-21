@@ -18,15 +18,13 @@ type Coordinator struct {
 	mu                sync.Mutex
 	idSeq             int
 	coordinatorWorker *CoordinatorWorker
-	worker            *Worker
-	corpus            *PersistentSet
-	suppressions      *PersistentSet
-	crashers          *PersistentSet
+	*Worker
+	corpus       *PersistentSet
+	suppressions *PersistentSet
+	crashers     *PersistentSet
 
 	startTime     time.Time
 	lastInput     time.Time
-	statExecs     uint64
-	statRestarts  uint64
 	coverFullness int
 }
 
@@ -56,23 +54,23 @@ func coordinatorMain() {
 		pending:  nil,
 		lastSync: time.Time{},
 	}
-	c.worker = newWorker(c)
+	c.Worker = newWorker(c)
 	// Give the worker initial corpus.
 	for _, a := range c.corpus.m {
-		c.worker.hub.triageQueue = append(c.worker.hub.triageQueue, CoordinatorInput{a.data, a.meta, execCorpus, !a.user, true})
+		c.hub.triageQueue = append(c.hub.triageQueue, CoordinatorInput{a.data, a.meta, execCorpus, !a.user, true})
 	}
-	c.worker.hub.initialTriage = uint32(len(c.corpus.m))
+	c.hub.initialTriage = uint32(len(c.corpus.m))
 
 	go coordinatorLoop(c)
 }
 
 func coordinatorLoop(c *Coordinator) {
-	go c.worker.loop()
+	go c.loop()
 
 	// Local buffer helps to avoid deadlocks on chan overflows.
 	var triageC chan CoordinatorInput
 	var triageInput CoordinatorInput
-	hub := c.worker.hub
+	hub := c.hub
 	printStatsTicker := time.Tick(3 * time.Second)
 	for {
 		if len(hub.triageQueue) > 0 && triageC == nil {
@@ -199,14 +197,14 @@ func (c *Coordinator) coordinatorStats() coordinatorStats {
 		Uptime:           fmtDuration(time.Since(c.startTime)),
 		StartTime:        c.startTime,
 		LastNewInputTime: c.lastInput,
-		Execs:            c.statExecs,
+		Execs:            c.stats.execs,
 		Cover:            uint64(c.coverFullness),
 		Workers:          1,
 	}
 
 	// Print stats line.
-	if c.statExecs != 0 && c.statRestarts != 0 {
-		stats.RestartsDenom = c.statExecs / c.statRestarts
+	if c.stats.execs != 0 && c.stats.restarts != 0 {
+		stats.RestartsDenom = c.stats.execs / c.stats.restarts
 	}
 
 	return stats
@@ -332,11 +330,9 @@ func (c *Coordinator) sync() {
 	defer c.mu.Unlock()
 
 	w := c.coordinatorWorker
-	a := c.worker.hub.sync(w.pending)
+	a := c.hub.sync(w.pending)
 	w.pending = nil
 
-	c.statExecs = c.worker.stats.execs
-	c.statRestarts = c.worker.stats.restarts
 	if c.coverFullness < a.CoverFullness {
 		c.coverFullness = a.CoverFullness
 	}
