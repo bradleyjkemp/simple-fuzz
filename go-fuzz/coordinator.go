@@ -57,9 +57,9 @@ func coordinatorMain() {
 	c.Worker = newWorker(c)
 	// Give the worker initial corpus.
 	for _, a := range c.corpus.m {
-		c.hub.triageQueue = append(c.hub.triageQueue, CoordinatorInput{a.data, a.meta, execCorpus, !a.user, true})
+		c.hubTriageQueue = append(c.hubTriageQueue, CoordinatorInput{a.data, a.meta, execCorpus, !a.user, true})
 	}
-	c.hub.initialTriage = uint32(len(c.corpus.m))
+	c.initialTriage = uint32(len(c.corpus.m))
 
 	go coordinatorLoop(c)
 }
@@ -70,14 +70,14 @@ func coordinatorLoop(c *Coordinator) {
 	// Local buffer helps to avoid deadlocks on chan overflows.
 	var triageC chan CoordinatorInput
 	var triageInput CoordinatorInput
-	hub := c.hub
+	hub := c
 	printStatsTicker := time.Tick(3 * time.Second)
 	for {
-		if len(hub.triageQueue) > 0 && triageC == nil {
-			n := len(hub.triageQueue) - 1
-			triageInput = hub.triageQueue[n]
-			hub.triageQueue[n] = CoordinatorInput{}
-			hub.triageQueue = hub.triageQueue[:n]
+		if len(hub.hubTriageQueue) > 0 && triageC == nil {
+			n := len(hub.hubTriageQueue) - 1
+			triageInput = hub.hubTriageQueue[n]
+			hub.hubTriageQueue[n] = CoordinatorInput{}
+			hub.hubTriageQueue = hub.hubTriageQueue[:n]
 			triageC = hub.triageC
 		}
 
@@ -97,11 +97,11 @@ func coordinatorLoop(c *Coordinator) {
 
 		case triageC <- triageInput:
 			// Send new input to worker for triage.
-			if len(hub.triageQueue) > 0 {
-				n := len(hub.triageQueue) - 1
-				triageInput = hub.triageQueue[n]
-				hub.triageQueue[n] = CoordinatorInput{}
-				hub.triageQueue = hub.triageQueue[:n]
+			if len(hub.hubTriageQueue) > 0 {
+				n := len(hub.hubTriageQueue) - 1
+				triageInput = hub.hubTriageQueue[n]
+				hub.hubTriageQueue[n] = CoordinatorInput{}
+				hub.hubTriageQueue = hub.hubTriageQueue[:n]
 			} else {
 				triageC = nil
 				triageInput = CoordinatorInput{}
@@ -330,7 +330,7 @@ func (c *Coordinator) sync() {
 	defer c.mu.Unlock()
 
 	w := c.coordinatorWorker
-	a := c.hub.sync(w.pending)
+	a := c.Hub.sync(w.pending)
 	w.pending = nil
 
 	if c.coverFullness < a.CoverFullness {

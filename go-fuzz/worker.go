@@ -42,8 +42,8 @@ const (
 
 // Worker manages one testee.
 type Worker struct {
-	id      int
-	hub     *Hub
+	id int
+	*Hub
 	mutator *Mutator
 
 	coverBin *TestBinary
@@ -156,7 +156,7 @@ func newWorker(c *Coordinator) *Worker {
 	hub := newHub(c, metadata)
 	w := &Worker{
 		id:      0,
-		hub:     hub,
+		Hub:     hub,
 		mutator: newMutator(),
 	}
 	w.coverBin = newTestBinary(coverBin, w.periodicCheck, &w.stats, uint8(fnidx))
@@ -180,17 +180,17 @@ func (w *Worker) loop() {
 		}
 
 		select {
-		case input := <-w.hub.triageC:
+		case input := <-w.triageC:
 			if *flagV >= 2 {
 				log.Printf("worker %v triages coordinator input [%v]%v minimized=%v smashed=%v", w.id, len(input.Data), hash(input.Data), input.Minimized, input.Smashed)
 			}
 			w.triageInput(input)
-			if w.hub.initialTriage > 0 {
-				w.hub.initialTriage--
+			if w.Hub.initialTriage > 0 {
+				w.Hub.initialTriage--
 			}
 		}
 
-		if w.hub.initialTriage != 0 {
+		if w.Hub.initialTriage != 0 {
 			// Other worker are still triaging initial inputs.
 			// Wait until they finish, otherwise we can generate
 			// as if new interesting inputs that are not actually new
@@ -212,7 +212,7 @@ func (w *Worker) loop() {
 			continue
 		}
 
-		ro := w.hub.ro.Load().(*ROData)
+		ro := w.ro.Load().(*ROData)
 		if len(ro.corpus) == 0 {
 			// Some other worker triages corpus inputs.
 			time.Sleep(100 * time.Millisecond)
@@ -280,7 +280,7 @@ func (w *Worker) triageInput(input CoordinatorInput) {
 	}
 	if !input.Minimized {
 		inp.mine = true
-		ro := w.hub.ro.Load().(*ROData)
+		ro := w.ro.Load().(*ROData)
 		// When minimizing new inputs we don't pursue exactly the same coverage,
 		// instead we pursue just the "novelty" in coverage.
 		// Here we use corpusCover, because maxCover already includes the input coverage.
@@ -308,7 +308,7 @@ func (w *Worker) triageInput(input CoordinatorInput) {
 			inp.coverSize++
 		}
 	}
-	w.hub.newInputC <- inp
+	w.newInputC <- inp
 }
 
 // processCrasher minimizes new crashers and sends them to the hub.
@@ -328,7 +328,7 @@ func (w *Worker) processCrasher(crash NewCrasherArgs) {
 			return true
 		})
 	}
-	w.hub.newCrasherC <- crash
+	w.newCrasherC <- crash
 }
 
 // minimizeInput applies series of minimizing transformations to data
@@ -421,7 +421,7 @@ func (w *Worker) minimizeInput(data []byte, canonicalize bool, pred func(candida
 
 // smash gives some minimal attention to every new input.
 func (w *Worker) smash(data []byte, depth int) {
-	ro := w.hub.ro.Load().(*ROData)
+	ro := w.ro.Load().(*ROData)
 
 	// Pass it through sonar.
 	if *flagSonar {
@@ -575,7 +575,7 @@ func (w *Worker) testInputSonar(data []byte, depth int) (sonar []byte) {
 }
 
 func (w *Worker) testInputImpl(bin *TestBinary, data []byte, depth int, typ execType) (sonar []byte) {
-	ro := w.hub.ro.Load().(*ROData)
+	ro := w.ro.Load().(*ROData)
 	if len(ro.badInputs) > 0 {
 		if _, ok := ro.badInputs[hash(data)]; ok {
 			return nil // no, thanks
@@ -596,13 +596,13 @@ func (w *Worker) noteNewInput(data, cover []byte, res, depth int, typ execType) 
 		// User said to not add this input to corpus.
 		return
 	}
-	if w.hub.updateMaxCover(cover) {
+	if w.updateMaxCover(cover) {
 		w.triageQueue = append(w.triageQueue, CoordinatorInput{makeCopy(data), uint64(depth), typ, false, false})
 	}
 }
 
 func (w *Worker) noteCrasher(data, output []byte, hanged bool) {
-	ro := w.hub.ro.Load().(*ROData)
+	ro := w.ro.Load().(*ROData)
 	supp := extractSuppression(output)
 	if _, ok := ro.suppressions[hash(supp)]; ok {
 		return

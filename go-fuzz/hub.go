@@ -39,7 +39,7 @@ type Hub struct {
 	corpusCoverSize int
 	corpusSigs      map[Sig]struct{}
 	corpusStale     bool
-	triageQueue     []CoordinatorInput
+	hubTriageQueue  []CoordinatorInput
 
 	triageC     chan CoordinatorInput
 	newInputC   chan Input
@@ -130,7 +130,7 @@ func (hub *Hub) sync(newInputs []CoordinatorInput) *SyncStatus {
 	hub.stats.restarts = 0
 
 	if len(newInputs) > 0 {
-		hub.triageQueue = append(hub.triageQueue, newInputs...)
+		hub.hubTriageQueue = append(hub.hubTriageQueue, newInputs...)
 	}
 	if hub.corpusStale {
 		hub.updateScores()

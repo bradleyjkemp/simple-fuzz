@@ -33,7 +33,7 @@ type SonarSample struct {
 }
 
 func (w *Worker) parseSonarData(sonar []byte) (res []SonarSample) {
-	ro := w.hub.ro.Load().(*ROData)
+	ro := w.ro.Load().(*ROData)
 	sonar = makeCopy(sonar)
 	for len(sonar) > SonarHdrLen {
 		id := binary.LittleEndian.Uint32(sonar)
@@ -82,7 +82,7 @@ func (w *Worker) parseSonarData(sonar []byte) (res []SonarSample) {
 }
 
 func (w *Worker) processSonarData(data, sonar []byte, depth int, smash bool) {
-	ro := w.hub.ro.Load().(*ROData)
+	ro := w.ro.Load().(*ROData)
 	updated := false
 	checked := make(map[string]struct{})
 	samples := w.parseSonarData(sonar)
