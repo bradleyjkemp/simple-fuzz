@@ -18,7 +18,7 @@ func BenchmarkCompareCoverBody(b *testing.B) {
 	cur[CoverSize-1] = 1
 	b.Run("easy", func(b *testing.B) {
 		for i := 0; i < b.N; i++ {
-			if !compareCoverBody(base, cur) {
+			if !compareCoverDump(base, cur) {
 				b.Fatalf("cur should have increased coverage")
 			}
 		}
@@ -30,7 +30,7 @@ func BenchmarkCompareCoverBody(b *testing.B) {
 	cur[CoverSize/2] = 1
 	b.Run("hard", func(b *testing.B) {
 		for i := 0; i < b.N; i++ {
-			if !compareCoverBody(base, cur) {
+			if !compareCoverDump(base, cur) {
 				b.Fatalf("cur should have increased coverage")
 			}
 		}
