@@ -32,7 +32,7 @@ type SonarSample struct {
 	val   [2][]byte
 }
 
-func (w *Worker) parseSonarData(sonar []byte) (res []SonarSample) {
+func (w *Coordinator) parseSonarData(sonar []byte) (res []SonarSample) {
 	ro := w.ro.Load().(*ROData)
 	sonar = makeCopy(sonar)
 	for len(sonar) > SonarHdrLen {
@@ -81,7 +81,7 @@ func (w *Worker) parseSonarData(sonar []byte) (res []SonarSample) {
 	return res
 }
 
-func (w *Worker) processSonarData(data, sonar []byte, depth int, smash bool) {
+func (w *Coordinator) processSonarData(data, sonar []byte, depth int, smash bool) {
 	ro := w.ro.Load().(*ROData)
 	updated := false
 	checked := make(map[string]struct{})

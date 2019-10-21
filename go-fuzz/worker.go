@@ -71,7 +71,7 @@ type Input struct {
 	runningScoreSum int
 }
 
-func newWorker(c *Coordinator) *Worker {
+func newWorker(c *Coordinator) {
 	zipr, err := zip.OpenReader(*flagBin)
 	if err != nil {
 		log.Fatalf("failed to open bin file: %v", err)
@@ -153,18 +153,14 @@ func newWorker(c *Coordinator) *Worker {
 
 	shutdownCleanup = append(shutdownCleanup, cleanup)
 
-	hub := newHub(c, metadata)
-	w := &Worker{
-		id:      0,
-		Hub:     hub,
-		mutator: newMutator(),
-	}
-	w.coverBin = newTestBinary(coverBin, w.periodicCheck, &w.stats, uint8(fnidx))
-	w.sonarBin = newTestBinary(sonarBin, w.periodicCheck, &w.stats, uint8(fnidx))
-	return w
+	newHub(c, metadata)
+	c.id = 0
+	c.mutator = newMutator()
+	c.coverBin = newTestBinary(coverBin, c.periodicCheck, &c.workerstats, uint8(fnidx))
+	c.sonarBin = newTestBinary(sonarBin, c.periodicCheck, &c.workerstats, uint8(fnidx))
 }
 
-func (w *Worker) loop() {
+func (w *Coordinator) workerLoop() {
 	iter, fuzzSonarIter := 0, 0
 	for shutdown.Err() == nil {
 		if len(w.crasherQueue) > 0 {
@@ -185,12 +181,12 @@ func (w *Worker) loop() {
 				log.Printf("worker %v triages coordinator input [%v]%v minimized=%v smashed=%v", w.id, len(input.Data), hash(input.Data), input.Minimized, input.Smashed)
 			}
 			w.triageInput(input)
-			if w.Hub.initialTriage > 0 {
-				w.Hub.initialTriage--
+			if w.initialTriage > 0 {
+				w.initialTriage--
 			}
 		}
 
-		if w.Hub.initialTriage != 0 {
+		if w.initialTriage != 0 {
 			// Other worker are still triaging initial inputs.
 			// Wait until they finish, otherwise we can generate
 			// as if new interesting inputs that are not actually new
@@ -241,7 +237,7 @@ func (w *Worker) loop() {
 // triageInput processes every new input.
 // It calculates per-input metrics like execution time, coverage mask,
 // and minimizes the input to the minimal input with the same coverage.
-func (w *Worker) triageInput(input CoordinatorInput) {
+func (w *Coordinator) triageInput(input CoordinatorInput) {
 	if len(input.Data) > MaxInputSize {
 		input.Data = input.Data[:MaxInputSize]
 	}
@@ -312,7 +308,7 @@ func (w *Worker) triageInput(input CoordinatorInput) {
 }
 
 // processCrasher minimizes new crashers and sends them to the hub.
-func (w *Worker) processCrasher(crash NewCrasherArgs) {
+func (w *Coordinator) processCrasher(crash NewCrasherArgs) {
 	// Hanging inputs can take very long time to minimize.
 	if !crash.Hanging {
 		crash.Data = w.minimizeInput(crash.Data, true, func(candidate, cover, output []byte, res int, crashed, hanged bool) bool {
@@ -333,7 +329,7 @@ func (w *Worker) processCrasher(crash NewCrasherArgs) {
 
 // minimizeInput applies series of minimizing transformations to data
 // and asks pred whether the input is equivalent to the original one or not.
-func (w *Worker) minimizeInput(data []byte, canonicalize bool, pred func(candidate, cover, output []byte, result int, crashed, hanged bool) bool) []byte {
+func (w *Coordinator) minimizeInput(data []byte, canonicalize bool, pred func(candidate, cover, output []byte, result int, crashed, hanged bool) bool) []byte {
 	res := make([]byte, len(data))
 	copy(res, data)
 	start := time.Now()
@@ -420,7 +416,7 @@ func (w *Worker) minimizeInput(data []byte, canonicalize bool, pred func(candida
 }
 
 // smash gives some minimal attention to every new input.
-func (w *Worker) smash(data []byte, depth int) {
+func (w *Coordinator) smash(data []byte, depth int) {
 	ro := w.ro.Load().(*ROData)
 
 	// Pass it through sonar.
@@ -566,15 +562,15 @@ func (w *Worker) smash(data []byte, depth int) {
 	}
 }
 
-func (w *Worker) testInput(data []byte, depth int, typ execType) {
+func (w *Coordinator) testInput(data []byte, depth int, typ execType) {
 	w.testInputImpl(w.coverBin, data, depth, typ)
 }
 
-func (w *Worker) testInputSonar(data []byte, depth int) (sonar []byte) {
+func (w *Coordinator) testInputSonar(data []byte, depth int) (sonar []byte) {
 	return w.testInputImpl(w.sonarBin, data, depth, execSonar)
 }
 
-func (w *Worker) testInputImpl(bin *TestBinary, data []byte, depth int, typ execType) (sonar []byte) {
+func (w *Coordinator) testInputImpl(bin *TestBinary, data []byte, depth int, typ execType) (sonar []byte) {
 	ro := w.ro.Load().(*ROData)
 	if len(ro.badInputs) > 0 {
 		if _, ok := ro.badInputs[hash(data)]; ok {
@@ -591,7 +587,7 @@ func (w *Worker) testInputImpl(bin *TestBinary, data []byte, depth int, typ exec
 	return sonar
 }
 
-func (w *Worker) noteNewInput(data, cover []byte, res, depth int, typ execType) {
+func (w *Coordinator) noteNewInput(data, cover []byte, res, depth int, typ execType) {
 	if res < 0 {
 		// User said to not add this input to corpus.
 		return
@@ -601,7 +597,7 @@ func (w *Worker) noteNewInput(data, cover []byte, res, depth int, typ execType) 
 	}
 }
 
-func (w *Worker) noteCrasher(data, output []byte, hanged bool) {
+func (w *Coordinator) noteCrasher(data, output []byte, hanged bool) {
 	ro := w.ro.Load().(*ROData)
 	supp := extractSuppression(output)
 	if _, ok := ro.suppressions[hash(supp)]; ok {
@@ -615,12 +611,12 @@ func (w *Worker) noteCrasher(data, output []byte, hanged bool) {
 	})
 }
 
-func (w *Worker) periodicCheck() {
+func (w *Coordinator) periodicCheck() {
 	if shutdown.Err() != nil {
 		w.shutdown()
 		select {}
 	}
-	w.execs[execTotal] = w.stats.execs
+	w.execs[execTotal] = w.workerstats.execs
 	if time.Since(w.lastSync) < syncPeriod {
 		return
 	}
@@ -635,7 +631,7 @@ func (w *Worker) periodicCheck() {
 }
 
 // shutdown cleanups after worker, it is not guaranteed to be called.
-func (w *Worker) shutdown() {
+func (w *Coordinator) shutdown() {
 	w.coverBin.close()
 	w.sonarBin.close()
 }

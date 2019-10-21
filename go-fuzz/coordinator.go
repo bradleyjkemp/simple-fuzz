@@ -10,6 +10,7 @@ import (
 	"log"
 	"path/filepath"
 	"sync"
+	"sync/atomic"
 	"time"
 )
 
@@ -18,7 +19,41 @@ type Coordinator struct {
 	mu                sync.Mutex
 	idSeq             int
 	coordinatorWorker *CoordinatorWorker
-	*Worker
+
+	// *Worker
+	id int
+
+	// *Hub
+	ro atomic.Value // *ROData
+
+	maxCoverMu sync.Mutex
+	maxCover   atomic.Value // []byte
+
+	hubStats      Stats
+	initialTriage uint32
+
+	corpusCoverSize int
+	corpusSigs      map[Sig]struct{}
+	corpusStale     bool
+	hubTriageQueue  []CoordinatorInput
+
+	triageC     chan CoordinatorInput
+	newInputC   chan Input
+	newCrasherC chan NewCrasherArgs
+
+	corpusOrigins [execCount]uint64
+	mutator       *Mutator
+
+	coverBin *TestBinary
+	sonarBin *TestBinary
+
+	triageQueue  []CoordinatorInput
+	crasherQueue []NewCrasherArgs
+
+	lastSync    time.Time
+	workerstats Stats
+	execs       [execCount]uint64
+
 	corpus       *PersistentSet
 	suppressions *PersistentSet
 	crashers     *PersistentSet
@@ -54,7 +89,7 @@ func coordinatorMain() {
 		pending:  nil,
 		lastSync: time.Time{},
 	}
-	c.Worker = newWorker(c)
+	newWorker(c)
 	// Give the worker initial corpus.
 	for _, a := range c.corpus.m {
 		c.hubTriageQueue = append(c.hubTriageQueue, CoordinatorInput{a.data, a.meta, execCorpus, !a.user, true})
@@ -65,20 +100,19 @@ func coordinatorMain() {
 }
 
 func coordinatorLoop(c *Coordinator) {
-	go c.loop()
+	go c.workerLoop()
 
 	// Local buffer helps to avoid deadlocks on chan overflows.
 	var triageC chan CoordinatorInput
 	var triageInput CoordinatorInput
-	hub := c
 	printStatsTicker := time.Tick(3 * time.Second)
 	for {
-		if len(hub.hubTriageQueue) > 0 && triageC == nil {
-			n := len(hub.hubTriageQueue) - 1
-			triageInput = hub.hubTriageQueue[n]
-			hub.hubTriageQueue[n] = CoordinatorInput{}
-			hub.hubTriageQueue = hub.hubTriageQueue[:n]
-			triageC = hub.triageC
+		if len(c.hubTriageQueue) > 0 && triageC == nil {
+			n := len(c.hubTriageQueue) - 1
+			triageInput = c.hubTriageQueue[n]
+			c.hubTriageQueue[n] = CoordinatorInput{}
+			c.hubTriageQueue = c.hubTriageQueue[:n]
+			triageC = c.triageC
 		}
 
 		select {
@@ -97,24 +131,24 @@ func coordinatorLoop(c *Coordinator) {
 
 		case triageC <- triageInput:
 			// Send new input to worker for triage.
-			if len(hub.hubTriageQueue) > 0 {
-				n := len(hub.hubTriageQueue) - 1
-				triageInput = hub.hubTriageQueue[n]
-				hub.hubTriageQueue[n] = CoordinatorInput{}
-				hub.hubTriageQueue = hub.hubTriageQueue[:n]
+			if len(c.hubTriageQueue) > 0 {
+				n := len(c.hubTriageQueue) - 1
+				triageInput = c.hubTriageQueue[n]
+				c.hubTriageQueue[n] = CoordinatorInput{}
+				c.hubTriageQueue = c.hubTriageQueue[:n]
 			} else {
 				triageC = nil
 				triageInput = CoordinatorInput{}
 			}
 
-		case input := <-hub.newInputC:
+		case input := <-c.newInputC:
 			// New interesting input from worker.
-			ro := hub.ro.Load().(*ROData)
+			ro := c.ro.Load().(*ROData)
 			if !compareCover(ro.corpusCover, input.cover) {
 				break
 			}
 			sig := hash(input.data)
-			if _, ok := hub.corpusSigs[sig]; ok {
+			if _, ok := c.corpusSigs[sig]; ok {
 				break
 			}
 
@@ -122,11 +156,11 @@ func coordinatorLoop(c *Coordinator) {
 			if *flagV >= 2 {
 				log.Printf("hub received new input [%v]%v mine=%v", len(input.data), hash(input.data), input.mine)
 			}
-			hub.corpusSigs[sig] = struct{}{}
+			c.corpusSigs[sig] = struct{}{}
 			ro1 := new(ROData)
 			*ro1 = *ro
 			// Assign it the default score, but mark corpus for score recalculation.
-			hub.corpusStale = true
+			c.corpusStale = true
 			scoreSum := 0
 			if len(ro1.corpus) > 0 {
 				scoreSum = ro1.corpus[len(ro1.corpus)-1].runningScoreSum
@@ -134,14 +168,14 @@ func coordinatorLoop(c *Coordinator) {
 			input.score = defScore
 			input.runningScoreSum = scoreSum + defScore
 			ro1.corpus = append(ro1.corpus, input)
-			hub.updateMaxCover(input.cover)
+			c.updateMaxCover(input.cover)
 			ro1.corpusCover = makeCopy(ro.corpusCover)
-			hub.corpusCoverSize = updateMaxCover(ro1.corpusCover, input.cover)
-			hub.ro.Store(ro1)
-			hub.corpusOrigins[input.typ]++
+			c.corpusCoverSize = updateMaxCover(ro1.corpusCover, input.cover)
+			c.ro.Store(ro1)
+			c.corpusOrigins[input.typ]++
 
 			if input.mine {
-				if err := hub.coordinator.NewInput(&NewInputArgs{hub.id, input.data, uint64(input.depth)}, nil); err != nil {
+				if err := c.NewInput(&NewInputArgs{input.data, uint64(input.depth)}, nil); err != nil {
 					log.Printf("failed to connect to coordinator: %v, killing worker", err)
 					return
 				}
@@ -151,10 +185,10 @@ func coordinatorLoop(c *Coordinator) {
 				dumpCover(filepath.Join(*flagWorkdir, "coverprofile"), ro.coverBlocks, ro.corpusCover)
 			}
 
-		case crash := <-hub.newCrasherC:
+		case crash := <-c.newCrasherC:
 			// New crasher from worker. Woohoo!
 			if crash.Hanging || !*flagDup {
-				ro := hub.ro.Load().(*ROData)
+				ro := c.ro.Load().(*ROData)
 				ro1 := new(ROData)
 				*ro1 = *ro
 				if crash.Hanging {
@@ -171,9 +205,9 @@ func coordinatorLoop(c *Coordinator) {
 					}
 					ro1.suppressions[hash(crash.Suppression)] = struct{}{}
 				}
-				hub.ro.Store(ro1)
+				c.ro.Store(ro1)
 			}
-			if err := hub.coordinator.NewCrasher(&crash, nil); err != nil {
+			if err := c.NewCrasher(&crash, nil); err != nil {
 				log.Printf("new crasher call failed: %v", err)
 			}
 		}
@@ -197,14 +231,14 @@ func (c *Coordinator) coordinatorStats() coordinatorStats {
 		Uptime:           fmtDuration(time.Since(c.startTime)),
 		StartTime:        c.startTime,
 		LastNewInputTime: c.lastInput,
-		Execs:            c.stats.execs,
+		Execs:            c.workerstats.execs,
 		Cover:            uint64(c.coverFullness),
 		Workers:          1,
 	}
 
 	// Print stats line.
-	if c.stats.execs != 0 && c.stats.restarts != 0 {
-		stats.RestartsDenom = c.stats.execs / c.stats.restarts
+	if c.workerstats.execs != 0 && c.workerstats.restarts != 0 {
+		stats.RestartsDenom = c.workerstats.execs / c.workerstats.restarts
 	}
 
 	return stats
@@ -249,7 +283,6 @@ type CoordinatorInput struct {
 }
 
 type NewInputArgs struct {
-	ID   int
 	Data []byte
 	Prio uint64
 }
@@ -330,7 +363,7 @@ func (c *Coordinator) sync() {
 	defer c.mu.Unlock()
 
 	w := c.coordinatorWorker
-	a := c.Hub.sync(w.pending)
+	a := c.hubSync(w.pending)
 	w.pending = nil
 
 	if c.coverFullness < a.CoverFullness {

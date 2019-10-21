@@ -65,15 +65,12 @@ type Stats struct {
 	restarts uint64
 }
 
-func newHub(coordinator *Coordinator, metadata MetaData) *Hub {
+func newHub(c *Coordinator, metadata MetaData) {
 	workers := 1
-	hub := &Hub{
-		coordinator: coordinator,
-		corpusSigs:  make(map[Sig]struct{}),
-		triageC:     make(chan CoordinatorInput, workers),
-		newInputC:   make(chan Input, workers),
-		newCrasherC: make(chan NewCrasherArgs, workers),
-	}
+	c.corpusSigs = make(map[Sig]struct{})
+	c.triageC = make(chan CoordinatorInput, workers)
+	c.newInputC = make(chan Input, workers)
+	c.newCrasherC = make(chan NewCrasherArgs, workers)
 
 	coverBlocks := make(map[int][]CoverBlock)
 	for _, b := range metadata.Blocks {
@@ -87,7 +84,7 @@ func newHub(coordinator *Coordinator, metadata MetaData) *Hub {
 		sonarSites[i].id = b.ID
 		sonarSites[i].loc = fmt.Sprintf("%v:%v.%v,%v.%v", b.File, b.StartLine, b.StartCol, b.EndLine, b.EndCol)
 	}
-	hub.maxCover.Store(make([]byte, CoverSize))
+	c.maxCover.Store(make([]byte, CoverSize))
 
 	ro := &ROData{
 		corpusCover:  make([]byte, CoverSize),
@@ -104,12 +101,10 @@ func newHub(coordinator *Coordinator, metadata MetaData) *Hub {
 			ro.intLits = append(ro.intLits, []byte(lit.Val))
 		}
 	}
-	hub.ro.Store(ro)
-
-	return hub
+	c.ro.Store(ro)
 }
 
-func (hub *Hub) sync(newInputs []CoordinatorInput) *SyncStatus {
+func (hub *Coordinator) hubSync(newInputs []CoordinatorInput) *SyncStatus {
 	// Sync with the coordinator.
 	if *flagV >= 1 {
 		ro := hub.ro.Load().(*ROData)
@@ -122,12 +117,12 @@ func (hub *Hub) sync(newInputs []CoordinatorInput) *SyncStatus {
 	}
 	args := &SyncStatus{
 		ID:            hub.id,
-		Execs:         hub.stats.execs,
-		Restarts:      hub.stats.restarts,
+		Execs:         hub.hubStats.execs,
+		Restarts:      hub.hubStats.restarts,
 		CoverFullness: hub.corpusCoverSize,
 	}
-	hub.stats.execs = 0
-	hub.stats.restarts = 0
+	hub.hubStats.execs = 0
+	hub.hubStats.restarts = 0
 
 	if len(newInputs) > 0 {
 		hub.hubTriageQueue = append(hub.hubTriageQueue, newInputs...)
@@ -142,7 +137,7 @@ func (hub *Hub) sync(newInputs []CoordinatorInput) *SyncStatus {
 
 // Preliminary cover update to prevent new input thundering herd.
 // This function is synchronous to reduce latency.
-func (hub *Hub) updateMaxCover(cover []byte) bool {
+func (hub *Coordinator) updateMaxCover(cover []byte) bool {
 	oldMaxCover := hub.maxCover.Load().([]byte)
 	if !compareCover(oldMaxCover, cover) {
 		return false
@@ -159,7 +154,7 @@ func (hub *Hub) updateMaxCover(cover []byte) bool {
 	return true
 }
 
-func (hub *Hub) updateScores() {
+func (hub *Coordinator) updateScores() {
 	ro := hub.ro.Load().(*ROData)
 	ro1 := new(ROData)
 	*ro1 = *ro
