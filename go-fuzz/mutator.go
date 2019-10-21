@@ -9,7 +9,6 @@ import (
 	"math/rand"
 	"sort"
 	"strconv"
-	"time"
 
 	. "github.com/bradleyjkemp/simple-fuzz/go-fuzz-defs"
 )
@@ -19,7 +18,8 @@ type Mutator struct {
 }
 
 func newMutator() *Mutator {
-	return &Mutator{r: rand.New(rand.NewSource(time.Now().Unix()))}
+	// TODO: revert this deterministic seed
+	return &Mutator{r: rand.New(rand.NewSource(1))}
 }
 
 func (m *Mutator) rand(n int) int {
