@@ -134,7 +134,30 @@ func newWorker(c *Coordinator) {
 
 	shutdownCleanup = append(shutdownCleanup, cleanup)
 
-	newHub(c, metadata)
+	c.corpusSigs = make(map[Sig]struct{})
+
+	coverBlocks := make(map[int][]CoverBlock)
+	for _, b := range metadata.Blocks {
+		coverBlocks[b.ID] = append(coverBlocks[b.ID], b)
+	}
+
+	c.maxCover.Store(make([]byte, CoverSize))
+
+	c.ro = &ROData{
+		corpusCover:  make([]byte, CoverSize),
+		badInputs:    make(map[Sig]struct{}),
+		suppressions: make(map[Sig]struct{}),
+		coverBlocks:  coverBlocks,
+	}
+	// Prepare list of string and integer literals.
+	for _, lit := range metadata.Literals {
+		if lit.IsStr {
+			c.ro.strLits = append(c.ro.strLits, []byte(lit.Val))
+		} else {
+			c.ro.intLits = append(c.ro.intLits, []byte(lit.Val))
+		}
+	}
+
 	c.mutator = newMutator()
 	c.coverBin = newTestBinary(coverBin, c.periodicCheck, &c.workerstats, uint8(fnidx))
 }
@@ -171,14 +194,13 @@ func (w *Coordinator) workerLoop() {
 			continue
 		}
 
-		ro := w.ro.Load().(*ROData)
-		if len(ro.corpus) == 0 {
+		if len(w.ro.corpus) == 0 {
 			// Some other worker triages corpus inputs.
 			time.Sleep(100 * time.Millisecond)
 			continue
 		}
 
-		data, depth := w.mutator.generate(ro)
+		data, depth := w.mutator.generate(w.ro)
 
 		// Plain old blind fuzzing.
 		w.testInput(data, depth, execFuzz)
@@ -228,11 +250,10 @@ func (w *Coordinator) triageInput(input CoordinatorInput) {
 	}
 	if !input.Minimized {
 		inp.mine = true
-		ro := w.ro.Load().(*ROData)
 		// When minimizing new inputs we don't pursue exactly the same coverage,
 		// instead we pursue just the "novelty" in coverage.
 		// Here we use corpusCover, because maxCover already includes the input coverage.
-		newCover, ok := findNewCover(ro.corpusCover, inp.cover)
+		newCover, ok := findNewCover(w.ro.corpusCover, inp.cover)
 		if !ok {
 			return // covered by somebody else
 		}
@@ -258,8 +279,7 @@ func (w *Coordinator) triageInput(input CoordinatorInput) {
 	}
 
 	// New interesting input from worker.
-	ro := w.ro.Load().(*ROData)
-	if !compareCover(ro.corpusCover, inp.cover) {
+	if !compareCover(w.ro.corpusCover, inp.cover) {
 		return
 	}
 	sig := hash(inp.data)
@@ -272,24 +292,21 @@ func (w *Coordinator) triageInput(input CoordinatorInput) {
 		log.Printf("hub received new input [%v]%v mine=%v", len(inp.data), hash(inp.data), inp.mine)
 	}
 	w.corpusSigs[sig] = struct{}{}
-	ro1 := new(ROData)
-	*ro1 = *ro
 	// Assign it the default score, but mark corpus for score recalculation.
 	w.corpusStale = true
 	scoreSum := 0
-	if len(ro1.corpus) > 0 {
-		scoreSum = ro1.corpus[len(ro1.corpus)-1].runningScoreSum
+	if len(w.ro.corpus) > 0 {
+		scoreSum = w.ro.corpus[len(w.ro.corpus)-1].runningScoreSum
 	}
 	inp.score = defScore
 	inp.runningScoreSum = scoreSum + defScore
-	ro1.corpus = append(ro1.corpus, inp)
+	w.ro.corpus = append(w.ro.corpus, inp)
 	w.updateMaxCover(inp.cover)
-	ro1.corpusCover = makeCopy(ro.corpusCover)
-	corpusCoverSize := updateMaxCover(ro1.corpusCover, inp.cover)
+	w.ro.corpusCover = makeCopy(w.ro.corpusCover)
+	corpusCoverSize := updateMaxCover(w.ro.corpusCover, inp.cover)
 	if w.coverFullness < corpusCoverSize {
 		w.coverFullness = corpusCoverSize
 	}
-	w.ro.Store(ro1)
 	w.corpusOrigins[inp.typ]++
 
 	if inp.mine {
@@ -320,24 +337,12 @@ func (w *Coordinator) processCrasher(crash NewCrasherArgs) {
 
 	// New crasher from worker. Woohoo!
 	if crash.Hanging || !*flagDup {
-		ro := w.ro.Load().(*ROData)
-		ro1 := new(ROData)
-		*ro1 = *ro
 		if crash.Hanging {
-			ro1.badInputs = make(map[Sig]struct{})
-			for k, v := range ro.badInputs {
-				ro1.badInputs[k] = v
-			}
-			ro1.badInputs[hash(crash.Data)] = struct{}{}
+			w.ro.badInputs[hash(crash.Data)] = struct{}{}
 		}
 		if !*flagDup {
-			ro1.suppressions = make(map[Sig]struct{})
-			for k, v := range ro.suppressions {
-				ro1.suppressions[k] = v
-			}
-			ro1.suppressions[hash(crash.Suppression)] = struct{}{}
+			w.ro.suppressions[hash(crash.Suppression)] = struct{}{}
 		}
-		w.ro.Store(ro1)
 	}
 	w.NewCrasher(crash)
 }
@@ -432,8 +437,6 @@ func (w *Coordinator) minimizeInput(data []byte, canonicalize bool, pred func(ca
 
 // smash gives some minimal attention to every new input.
 func (w *Coordinator) smash(data []byte, depth int) {
-	ro := w.ro.Load().(*ROData)
-
 	// Flip each bit one-by-one.
 	for i := 0; i < len(data)*8; i++ {
 		data[i/8] ^= 1 << uint(i%8)
@@ -566,7 +569,7 @@ func (w *Coordinator) smash(data []byte, depth int) {
 
 	// Do a bunch of random mutations so that this input catches up with the rest.
 	for i := 0; i < 1e4; i++ {
-		tmp := w.mutator.mutate(data, ro)
+		tmp := w.mutator.mutate(data, w.ro)
 		w.testInput(tmp, depth+1, execFuzz)
 	}
 }
@@ -576,11 +579,8 @@ func (w *Coordinator) testInput(data []byte, depth int, typ execType) {
 }
 
 func (w *Coordinator) testInputImpl(bin *TestBinary, data []byte, depth int, typ execType) (sonar []byte) {
-	ro := w.ro.Load().(*ROData)
-	if len(ro.badInputs) > 0 {
-		if _, ok := ro.badInputs[hash(data)]; ok {
-			return nil // no, thanks
-		}
+	if _, ok := w.ro.badInputs[hash(data)]; ok {
+		return nil // no, thanks
 	}
 	w.execs[typ]++
 	res, _, cover, sonar, output, crashed, hanged := bin.test(data)
@@ -603,9 +603,8 @@ func (w *Coordinator) noteNewInput(data, cover []byte, res, depth int, typ execT
 }
 
 func (w *Coordinator) noteCrasher(data, output []byte, hanged bool) {
-	ro := w.ro.Load().(*ROData)
 	supp := extractSuppression(output)
-	if _, ok := ro.suppressions[hash(supp)]; ok {
+	if _, ok := w.ro.suppressions[hash(supp)]; ok {
 		return
 	}
 	w.crasherQueue = append(w.crasherQueue, NewCrasherArgs{

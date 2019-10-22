@@ -17,8 +17,7 @@ import (
 type Coordinator struct {
 	mu sync.Mutex
 
-	// *Hub
-	ro atomic.Value // *ROData
+	ro *ROData
 
 	maxCoverMu sync.Mutex
 	maxCover   atomic.Value // []byte
@@ -173,9 +172,8 @@ func (c *Coordinator) sync() {
 
 	// Sync with the coordinator.
 	if *flagV >= 1 {
-		ro := c.ro.Load().(*ROData)
 		log.Printf("hub: corpus=%v bootstrap=%v fuzz=%v minimize=%v versifier=%v smash=%v sonar=%v",
-			len(ro.corpus), c.corpusOrigins[execBootstrap]+c.corpusOrigins[execCorpus],
+			len(c.ro.corpus), c.corpusOrigins[execBootstrap]+c.corpusOrigins[execCorpus],
 			c.corpusOrigins[execFuzz]+c.corpusOrigins[execSonar],
 			c.corpusOrigins[execMinimizeInput]+c.corpusOrigins[execMinimizeCrasher],
 			c.corpusOrigins[execVersifier], c.corpusOrigins[execSmash],

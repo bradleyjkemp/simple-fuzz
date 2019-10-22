@@ -63,33 +63,6 @@ type Stats struct {
 	restarts uint64
 }
 
-func newHub(c *Coordinator, metadata MetaData) {
-	c.corpusSigs = make(map[Sig]struct{})
-
-	coverBlocks := make(map[int][]CoverBlock)
-	for _, b := range metadata.Blocks {
-		coverBlocks[b.ID] = append(coverBlocks[b.ID], b)
-	}
-
-	c.maxCover.Store(make([]byte, CoverSize))
-
-	ro := &ROData{
-		corpusCover:  make([]byte, CoverSize),
-		badInputs:    make(map[Sig]struct{}),
-		suppressions: make(map[Sig]struct{}),
-		coverBlocks:  coverBlocks,
-	}
-	// Prepare list of string and integer literals.
-	for _, lit := range metadata.Literals {
-		if lit.IsStr {
-			ro.strLits = append(ro.strLits, []byte(lit.Val))
-		} else {
-			ro.intLits = append(ro.intLits, []byte(lit.Val))
-		}
-	}
-	c.ro.Store(ro)
-}
-
 // Preliminary cover update to prevent new input thundering herd.
 // This function is synchronous to reduce latency.
 func (hub *Coordinator) updateMaxCover(cover []byte) bool {
@@ -110,24 +83,17 @@ func (hub *Coordinator) updateMaxCover(cover []byte) bool {
 }
 
 func (hub *Coordinator) updateScores() {
-	ro := hub.ro.Load().(*ROData)
-	ro1 := new(ROData)
-	*ro1 = *ro
-	corpus := make([]Input, len(ro.corpus))
-	copy(corpus, ro.corpus)
-	ro1.corpus = corpus
-
 	var sumExecTime, sumCoverSize uint64
-	for _, inp := range corpus {
+	for _, inp := range hub.ro.corpus {
 		sumExecTime += inp.execTime
 		sumCoverSize += uint64(inp.coverSize)
 	}
-	n := uint64(len(corpus))
+	n := uint64(len(hub.ro.corpus))
 	avgExecTime := sumExecTime / n
 	avgCoverSize := sumCoverSize / n
 
 	// Phase 1: calculate score for each input independently.
-	for i, inp := range corpus {
+	for i, inp := range hub.ro.corpus {
 		score := defScore
 
 		// Execution time multiplier 0.1-3x.
@@ -190,7 +156,7 @@ func (hub *Coordinator) updateScores() {
 		} else if score > maxScore {
 			score = maxScore
 		}
-		corpus[i].score = int(score)
+		hub.ro.corpus[i].score = int(score)
 	}
 
 	// Phase 2: Choose a minimal set of (favored) inputs that give full coverage.
@@ -201,17 +167,17 @@ func (hub *Coordinator) updateScores() {
 		chosen bool
 	}
 	candidates := make([]Candidate, CoverSize)
-	for idx, inp := range corpus {
-		corpus[idx].favored = false
+	for idx, inp := range hub.ro.corpus {
+		hub.ro.corpus[idx].favored = false
 		for i, c := range inp.cover {
 			if c == 0 {
 				continue
 			}
 			c = roundUpCover(c)
-			if c != ro.corpusCover[i] {
+			if c != hub.ro.corpusCover[i] {
 				continue
 			}
-			if c > ro.corpusCover[i] {
+			if c > hub.ro.corpusCover[i] {
 				log.Fatalf("bad")
 			}
 			if candidates[i].score < inp.score {
@@ -224,7 +190,7 @@ func (hub *Coordinator) updateScores() {
 		if cand.score == 0 {
 			continue
 		}
-		inp := &corpus[cand.index]
+		inp := &hub.ro.corpus[cand.index]
 		inp.favored = true
 		for i := ci + 1; i < CoverSize; i++ {
 			c := inp.cover[i]
@@ -232,20 +198,18 @@ func (hub *Coordinator) updateScores() {
 				continue
 			}
 			c = roundUpCover(c)
-			if c != ro.corpusCover[i] {
+			if c != hub.ro.corpusCover[i] {
 				continue
 			}
 			candidates[i].score = 0
 		}
 	}
 	scoreSum := 0
-	for i, inp := range corpus {
+	for i, inp := range hub.ro.corpus {
 		if !inp.favored {
 			inp.score = minScore
 		}
 		scoreSum += inp.score
-		corpus[i].runningScoreSum = scoreSum
+		hub.ro.corpus[i].runningScoreSum = scoreSum
 	}
-
-	hub.ro.Store(ro1)
 }
