@@ -17,9 +17,6 @@ import (
 type Coordinator struct {
 	mu sync.Mutex
 
-	// *Worker
-	id int
-
 	// *Hub
 	ro atomic.Value // *ROData
 
@@ -223,7 +220,6 @@ func (c *Coordinator) coordinatorStats() coordinatorStats {
 		LastNewInputTime: c.lastInput,
 		Execs:            c.workerstats.execs,
 		Cover:            uint64(c.coverFullness),
-		Workers:          1,
 	}
 
 	// Print stats line.
@@ -235,15 +231,15 @@ func (c *Coordinator) coordinatorStats() coordinatorStats {
 }
 
 type coordinatorStats struct {
-	Workers, Corpus, Crashers, Execs, Cover, RestartsDenom uint64
-	LastNewInputTime, StartTime                            time.Time
-	Uptime                                                 string
+	Corpus, Crashers, Execs, Cover, RestartsDenom uint64
+	LastNewInputTime, StartTime                   time.Time
+	Uptime                                        string
 }
 
 func (s coordinatorStats) String() string {
-	return fmt.Sprintf("worker: %v, corpus: %v (%v ago), crashers: %v,"+
+	return fmt.Sprintf("corpus: %v (%v ago), crashers: %v,"+
 		" restarts: 1/%v, execs: %v (%.0f/sec), cover: %v, uptime: %v",
-		s.Workers, s.Corpus, fmtDuration(time.Since(s.LastNewInputTime)),
+		s.Corpus, fmtDuration(time.Since(s.LastNewInputTime)),
 		s.Crashers, s.RestartsDenom, s.Execs, s.ExecsPerSec(), s.Cover,
 		s.Uptime,
 	)

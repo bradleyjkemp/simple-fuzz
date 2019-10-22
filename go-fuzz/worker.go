@@ -154,7 +154,6 @@ func newWorker(c *Coordinator) {
 	shutdownCleanup = append(shutdownCleanup, cleanup)
 
 	newHub(c, metadata)
-	c.id = 0
 	c.mutator = newMutator()
 	c.coverBin = newTestBinary(coverBin, c.periodicCheck, &c.workerstats, uint8(fnidx))
 	c.sonarBin = newTestBinary(sonarBin, c.periodicCheck, &c.workerstats, uint8(fnidx))
@@ -169,7 +168,7 @@ func (w *Coordinator) workerLoop() {
 			w.crasherQueue[n] = NewCrasherArgs{}
 			w.crasherQueue = w.crasherQueue[:n]
 			if *flagV >= 2 {
-				log.Printf("worker %v processes crasher [%v]%v", w.id, len(crash.Data), hash(crash.Data))
+				log.Printf("worker processes crasher [%v]%v", len(crash.Data), hash(crash.Data))
 			}
 			w.processCrasher(crash)
 			continue
@@ -178,7 +177,7 @@ func (w *Coordinator) workerLoop() {
 		select {
 		case input := <-w.triageC:
 			if *flagV >= 2 {
-				log.Printf("worker %v triages coordinator input [%v]%v minimized=%v smashed=%v", w.id, len(input.Data), hash(input.Data), input.Minimized, input.Smashed)
+				log.Printf("worker triages coordinator input [%v]%v minimized=%v smashed=%v", len(input.Data), hash(input.Data), input.Minimized, input.Smashed)
 			}
 			w.triageInput(input)
 			if w.initialTriage > 0 {
@@ -202,7 +201,7 @@ func (w *Coordinator) workerLoop() {
 			w.triageQueue[n] = CoordinatorInput{}
 			w.triageQueue = w.triageQueue[:n]
 			if *flagV >= 2 {
-				log.Printf("worker %v triages local input [%v]%v minimized=%v smashed=%v", w.id, len(input.Data), hash(input.Data), input.Minimized, input.Smashed)
+				log.Printf("worker triages local input [%v]%v minimized=%v smashed=%v", len(input.Data), hash(input.Data), input.Minimized, input.Smashed)
 			}
 			w.triageInput(input)
 			continue
@@ -622,8 +621,8 @@ func (w *Coordinator) periodicCheck() {
 	}
 	w.lastSync = time.Now()
 	if *flagV >= 2 {
-		log.Printf("worker %v: triageq=%v execs=%v mininp=%v mincrash=%v triage=%v fuzz=%v versifier=%v smash=%v sonar=%v hint=%v",
-			w.id, len(w.triageQueue),
+		log.Printf("worker triageq=%v execs=%v mininp=%v mincrash=%v triage=%v fuzz=%v versifier=%v smash=%v sonar=%v hint=%v",
+			len(w.triageQueue),
 			w.execs[execTotal], w.execs[execMinimizeInput], w.execs[execMinimizeCrasher],
 			w.execs[execTriageInput], w.execs[execFuzz], w.execs[execVersifier], w.execs[execSmash],
 			w.execs[execSonar], w.execs[execSonarHint])
