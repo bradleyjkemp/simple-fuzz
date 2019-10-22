@@ -4,12 +4,9 @@
 package main
 
 import (
-	"fmt"
 	"log"
-	"os"
 
 	. "github.com/bradleyjkemp/simple-fuzz/go-fuzz-defs"
-	. "github.com/bradleyjkemp/simple-fuzz/go-fuzz-types"
 )
 
 func makeCopy(data []byte) []byte {
@@ -99,41 +96,4 @@ func worseCover(base, cover []byte) bool {
 		}
 	}
 	return false
-}
-
-func dumpCover(outf string, blocks map[int][]CoverBlock, cover []byte) {
-	// Exclude files that have no coverage at all.
-	files := make(map[string]bool)
-	for i, v := range cover {
-		if v == 0 {
-			continue
-		}
-		for _, b := range blocks[i] {
-			files[b.File] = true
-		}
-	}
-
-	out, err := os.Create(outf)
-	if err != nil {
-		log.Fatalf("failed to create coverage file: %v", err)
-	}
-	defer out.Close()
-	const showCounters = false
-	if showCounters {
-		fmt.Fprintf(out, "mode: count\n")
-	} else {
-		fmt.Fprintf(out, "mode: set\n")
-	}
-	for i, v := range cover {
-		for _, b := range blocks[i] {
-			if !files[b.File] {
-				continue
-			}
-			if !showCounters && v != 0 {
-				v = 1
-			}
-			fmt.Fprintf(out, "%s:%v.%v,%v.%v %v %v\n",
-				b.File, b.StartLine, b.StartCol, b.EndLine, b.EndCol, b.NumStmt, v)
-		}
-	}
 }

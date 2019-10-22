@@ -298,10 +298,6 @@ func (w *Coordinator) triageInput(input CoordinatorInput) {
 			return
 		}
 	}
-
-	if *flagDumpCover {
-		dumpCover(filepath.Join(*flagWorkdir, "coverprofile"), ro.coverBlocks, ro.corpusCover)
-	}
 }
 
 // processCrasher minimizes new crashers and sends them to the hub.
