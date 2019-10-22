@@ -68,7 +68,6 @@ type Stats struct {
 func newHub(c *Coordinator, metadata MetaData) {
 	workers := 1
 	c.corpusSigs = make(map[Sig]struct{})
-	c.triageC = make(chan CoordinatorInput, workers)
 	c.newInputC = make(chan Input, workers)
 	c.newCrasherC = make(chan NewCrasherArgs, workers)
 

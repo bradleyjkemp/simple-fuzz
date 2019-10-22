@@ -23,13 +23,9 @@ type Coordinator struct {
 	maxCoverMu sync.Mutex
 	maxCover   atomic.Value // []byte
 
-	initialTriage uint32
+	corpusSigs  map[Sig]struct{}
+	corpusStale bool
 
-	corpusSigs     map[Sig]struct{}
-	corpusStale    bool
-	hubTriageQueue []CoordinatorInput
-
-	triageC     chan CoordinatorInput
 	newInputC   chan Input
 	newCrasherC chan NewCrasherArgs
 
@@ -76,9 +72,8 @@ func coordinatorMain() {
 	newWorker(c)
 	// Give the worker initial corpus.
 	for _, a := range c.corpus.m {
-		c.hubTriageQueue = append(c.hubTriageQueue, CoordinatorInput{a.data, a.meta, execCorpus, !a.user, true})
+		c.triageQueue = append(c.triageQueue, CoordinatorInput{a.data, a.meta, execCorpus, !a.user, true})
 	}
-	c.initialTriage = uint32(len(c.corpus.m))
 
 	go coordinatorLoop(c)
 }
@@ -87,18 +82,8 @@ func coordinatorLoop(c *Coordinator) {
 	go c.workerLoop()
 
 	// Local buffer helps to avoid deadlocks on chan overflows.
-	var triageC chan CoordinatorInput
-	var triageInput CoordinatorInput
 	printStatsTicker := time.Tick(3 * time.Second)
 	for {
-		if len(c.hubTriageQueue) > 0 && triageC == nil {
-			n := len(c.hubTriageQueue) - 1
-			triageInput = c.hubTriageQueue[n]
-			c.hubTriageQueue[n] = CoordinatorInput{}
-			c.hubTriageQueue = c.hubTriageQueue[:n]
-			triageC = c.triageC
-		}
-
 		select {
 		case <-shutdown.Done():
 			return
@@ -112,18 +97,6 @@ func coordinatorLoop(c *Coordinator) {
 		case <-printStatsTicker:
 			c.sync()
 			c.broadcastStats()
-
-		case triageC <- triageInput:
-			// Send new input to worker for triage.
-			if len(c.hubTriageQueue) > 0 {
-				n := len(c.hubTriageQueue) - 1
-				triageInput = c.hubTriageQueue[n]
-				c.hubTriageQueue[n] = CoordinatorInput{}
-				c.hubTriageQueue = c.hubTriageQueue[:n]
-			} else {
-				triageC = nil
-				triageInput = CoordinatorInput{}
-			}
 
 		case input := <-c.newInputC:
 			// New interesting input from worker.
@@ -251,7 +224,7 @@ func (c *Coordinator) NewInput(a *NewInputArgs, r *int) error {
 		return nil
 	}
 	c.lastInput = time.Now()
-	c.hubTriageQueue = append(c.hubTriageQueue, CoordinatorInput{a.Data, a.Prio, execCorpus, true, false})
+	c.triageQueue = append(c.triageQueue, CoordinatorInput{a.Data, a.Prio, execCorpus, true, false})
 
 	return nil
 }

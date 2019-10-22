@@ -174,27 +174,6 @@ func (w *Coordinator) workerLoop() {
 			continue
 		}
 
-		select {
-		case input := <-w.triageC:
-			if *flagV >= 2 {
-				log.Printf("worker triages coordinator input [%v]%v minimized=%v smashed=%v", len(input.Data), hash(input.Data), input.Minimized, input.Smashed)
-			}
-			w.triageInput(input)
-			if w.initialTriage > 0 {
-				w.initialTriage--
-			}
-		}
-
-		if w.initialTriage != 0 {
-			// Other worker are still triaging initial inputs.
-			// Wait until they finish, otherwise we can generate
-			// as if new interesting inputs that are not actually new
-			// and thus unnecessary inflate corpus on every run.
-			// TODO: delete this sleep ASAP
-			time.Sleep(50 * time.Millisecond)
-			continue
-		}
-
 		if len(w.triageQueue) > 0 {
 			n := len(w.triageQueue) - 1
 			input := w.triageQueue[n]
