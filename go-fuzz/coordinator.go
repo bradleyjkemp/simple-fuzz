@@ -361,10 +361,36 @@ var errUnkownWorker = errors.New("unknown worker")
 func (c *Coordinator) sync() {
 	c.mu.Lock()
 	defer c.mu.Unlock()
-
 	w := c.coordinatorWorker
-	a := c.hubSync(w.pending)
+
+	// Sync with the coordinator.
+	if *flagV >= 1 {
+		ro := c.ro.Load().(*ROData)
+		log.Printf("hub: corpus=%v bootstrap=%v fuzz=%v minimize=%v versifier=%v smash=%v sonar=%v",
+			len(ro.corpus), c.corpusOrigins[execBootstrap]+c.corpusOrigins[execCorpus],
+			c.corpusOrigins[execFuzz]+c.corpusOrigins[execSonar],
+			c.corpusOrigins[execMinimizeInput]+c.corpusOrigins[execMinimizeCrasher],
+			c.corpusOrigins[execVersifier], c.corpusOrigins[execSmash],
+			c.corpusOrigins[execSonarHint])
+	}
+	a := &SyncStatus{
+		ID:            c.id,
+		Execs:         c.hubStats.execs,
+		Restarts:      c.hubStats.restarts,
+		CoverFullness: c.corpusCoverSize,
+	}
+	c.hubStats.execs = 0
+	c.hubStats.restarts = 0
+
+	if len(w.pending) > 0 {
+		c.hubTriageQueue = append(c.hubTriageQueue, w.pending...)
+	}
 	w.pending = nil
+
+	if c.corpusStale {
+		c.updateScores()
+		c.corpusStale = false
+	}
 
 	if c.coverFullness < a.CoverFullness {
 		c.coverFullness = a.CoverFullness
