@@ -5,7 +5,6 @@ package main
 
 import (
 	"bytes"
-	"errors"
 	"fmt"
 	"log"
 	"path/filepath"
@@ -16,9 +15,7 @@ import (
 
 // Coordinator manages persistent fuzzer state like input corpus and crashers.
 type Coordinator struct {
-	mu                sync.Mutex
-	idSeq             int
-	coordinatorWorker *CoordinatorWorker
+	mu sync.Mutex
 
 	// *Worker
 	id int
@@ -29,13 +26,11 @@ type Coordinator struct {
 	maxCoverMu sync.Mutex
 	maxCover   atomic.Value // []byte
 
-	hubStats      Stats
 	initialTriage uint32
 
-	corpusCoverSize int
-	corpusSigs      map[Sig]struct{}
-	corpusStale     bool
-	hubTriageQueue  []CoordinatorInput
+	corpusSigs     map[Sig]struct{}
+	corpusStale    bool
+	hubTriageQueue []CoordinatorInput
 
 	triageC     chan CoordinatorInput
 	newInputC   chan Input
@@ -65,10 +60,8 @@ type Coordinator struct {
 
 // CoordinatorWorker represents coordinator's view of a worker.
 type CoordinatorWorker struct {
-	id       int
-	procs    int
-	pending  []CoordinatorInput
-	lastSync time.Time
+	id    int
+	procs int
 }
 
 // coordinatorMain is entry function for coordinator.
@@ -83,12 +76,6 @@ func coordinatorMain() {
 		c.corpus.add(Artifact{[]byte{}, 0, false})
 	}
 
-	c.coordinatorWorker = &CoordinatorWorker{
-		id:       0,
-		procs:    1,
-		pending:  nil,
-		lastSync: time.Time{},
-	}
 	newWorker(c)
 	// Give the worker initial corpus.
 	for _, a := range c.corpus.m {
@@ -170,7 +157,10 @@ func coordinatorLoop(c *Coordinator) {
 			ro1.corpus = append(ro1.corpus, input)
 			c.updateMaxCover(input.cover)
 			ro1.corpusCover = makeCopy(ro.corpusCover)
-			c.corpusCoverSize = updateMaxCover(ro1.corpusCover, input.cover)
+			corpusCoverSize := updateMaxCover(ro1.corpusCover, input.cover)
+			if c.coverFullness < corpusCoverSize {
+				c.coverFullness = corpusCoverSize
+			}
 			c.ro.Store(ro1)
 			c.corpusOrigins[input.typ]++
 
@@ -292,19 +282,12 @@ func (c *Coordinator) NewInput(a *NewInputArgs, r *int) error {
 	c.mu.Lock()
 	defer c.mu.Unlock()
 
-	w := c.coordinatorWorker
-	if w == nil {
-		return errors.New("unknown worker")
-	}
-
 	art := Artifact{a.Data, a.Prio, false}
 	if !c.corpus.add(art) {
 		return nil
 	}
 	c.lastInput = time.Now()
-	// Queue the input for sending to every worker.
-	// TODO: does this make sense with only one worker?
-	w.pending = append(w.pending, CoordinatorInput{a.Data, a.Prio, execCorpus, true, false})
+	c.hubTriageQueue = append(c.hubTriageQueue, CoordinatorInput{a.Data, a.Prio, execCorpus, true, false})
 
 	return nil
 }
@@ -347,21 +330,11 @@ func (c *Coordinator) NewCrasher(a *NewCrasherArgs, r *int) error {
 	return nil
 }
 
-type SyncStatus struct {
-	ID            int
-	Execs         uint64
-	Restarts      uint64
-	CoverFullness int
-}
-
-var errUnkownWorker = errors.New("unknown worker")
-
 // Sync is a periodic sync with a worker.
 // Worker sends statistics. Coordinator returns new inputs.
 func (c *Coordinator) sync() {
 	c.mu.Lock()
 	defer c.mu.Unlock()
-	w := c.coordinatorWorker
 
 	// Sync with the coordinator.
 	if *flagV >= 1 {
@@ -373,27 +346,9 @@ func (c *Coordinator) sync() {
 			c.corpusOrigins[execVersifier], c.corpusOrigins[execSmash],
 			c.corpusOrigins[execSonarHint])
 	}
-	a := &SyncStatus{
-		ID:            c.id,
-		Execs:         c.hubStats.execs,
-		Restarts:      c.hubStats.restarts,
-		CoverFullness: c.corpusCoverSize,
-	}
-	c.hubStats.execs = 0
-	c.hubStats.restarts = 0
-
-	if len(w.pending) > 0 {
-		c.hubTriageQueue = append(c.hubTriageQueue, w.pending...)
-	}
-	w.pending = nil
 
 	if c.corpusStale {
 		c.updateScores()
 		c.corpusStale = false
 	}
-
-	if c.coverFullness < a.CoverFullness {
-		c.coverFullness = a.CoverFullness
-	}
-	w.lastSync = time.Now()
 }
