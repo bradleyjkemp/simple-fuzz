@@ -160,7 +160,6 @@ func newWorker(c *Coordinator) {
 }
 
 func (w *Coordinator) workerLoop() {
-	iter, fuzzSonarIter := 0, 0
 	for shutdown.Err() == nil {
 		if len(w.crasherQueue) > 0 {
 			n := len(w.crasherQueue) - 1
@@ -193,21 +192,10 @@ func (w *Coordinator) workerLoop() {
 			continue
 		}
 
-		// 9 out of 10 iterations are random fuzzing.
-		iter++
-		if iter%10 != 0 {
-			data, depth := w.mutator.generate(ro)
-			// Every 1000-th iteration goes to sonar.
-			fuzzSonarIter++
-			if *flagSonar && fuzzSonarIter%1000 == 0 {
-				// TODO: ensure that generated hint inputs does not actually take 99% of time.
-				sonar := w.testInputSonar(data, depth)
-				w.processSonarData(data, sonar, depth, false)
-			} else {
-				// Plain old blind fuzzing.
-				w.testInput(data, depth, execFuzz)
-			}
-		}
+		data, depth := w.mutator.generate(ro)
+
+		// Plain old blind fuzzing.
+		w.testInput(data, depth, execFuzz)
 	}
 	w.shutdown()
 }
@@ -463,12 +451,6 @@ func (w *Coordinator) minimizeInput(data []byte, canonicalize bool, pred func(ca
 // smash gives some minimal attention to every new input.
 func (w *Coordinator) smash(data []byte, depth int) {
 	ro := w.ro.Load().(*ROData)
-
-	// Pass it through sonar.
-	if *flagSonar {
-		sonar := w.testInputSonar(data, depth)
-		w.processSonarData(data, sonar, depth, true)
-	}
 
 	// Flip each bit one-by-one.
 	for i := 0; i < len(data)*8; i++ {

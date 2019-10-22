@@ -439,3 +439,11 @@ func init() {
 		interesting32 = append(interesting32, int32(v))
 	}
 }
+
+func reverse(data []byte) []byte {
+	tmp := make([]byte, len(data))
+	for i, v := range data {
+		tmp[len(data)-i-1] = v
+	}
+	return tmp
+}

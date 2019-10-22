@@ -137,24 +137,3 @@ func dumpCover(outf string, blocks map[int][]CoverBlock, cover []byte) {
 		}
 	}
 }
-
-func dumpSonar(outf string, sites []SonarSite) {
-	out, err := os.Create(outf)
-	if err != nil {
-		log.Fatalf("failed to create coverage file: %v", err)
-	}
-	defer out.Close()
-	fmt.Fprintf(out, "mode: set\n")
-	for i := range sites {
-		s := &sites[i]
-		cnt := 0  // red color
-		stmt := 1 // account in percentage calculation
-		if s.takenTotal[0] == 0 && s.takenTotal[1] == 0 {
-			stmt = 0 // don't account in percentage calculation
-			cnt = 1  // grey color
-		} else if s.takenTotal[0] > 0 && s.takenTotal[1] > 0 {
-			cnt = 100 // green color
-		}
-		fmt.Fprintf(out, "%v %v %v\n", s.loc, stmt, cnt)
-	}
-}

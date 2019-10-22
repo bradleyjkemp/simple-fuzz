@@ -4,7 +4,6 @@
 package main
 
 import (
-	"fmt"
 	"log"
 	"sync"
 	"sync/atomic"
@@ -57,7 +56,6 @@ type ROData struct {
 	strLits      [][]byte // string literals in testee
 	intLits      [][]byte // int literals in testee
 	coverBlocks  map[int][]CoverBlock
-	sonarSites   []SonarSite
 }
 
 type Stats struct {
@@ -72,14 +70,7 @@ func newHub(c *Coordinator, metadata MetaData) {
 	for _, b := range metadata.Blocks {
 		coverBlocks[b.ID] = append(coverBlocks[b.ID], b)
 	}
-	sonarSites := make([]SonarSite, len(metadata.Sonar))
-	for i, b := range metadata.Sonar {
-		if i != b.ID {
-			log.Fatalf("corrupted sonar metadata")
-		}
-		sonarSites[i].id = b.ID
-		sonarSites[i].loc = fmt.Sprintf("%v:%v.%v,%v.%v", b.File, b.StartLine, b.StartCol, b.EndLine, b.EndCol)
-	}
+
 	c.maxCover.Store(make([]byte, CoverSize))
 
 	ro := &ROData{
@@ -87,7 +78,6 @@ func newHub(c *Coordinator, metadata MetaData) {
 		badInputs:    make(map[Sig]struct{}),
 		suppressions: make(map[Sig]struct{}),
 		coverBlocks:  coverBlocks,
-		sonarSites:   sonarSites,
 	}
 	// Prepare list of string and integer literals.
 	for _, lit := range metadata.Literals {
