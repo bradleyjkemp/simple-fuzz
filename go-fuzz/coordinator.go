@@ -72,31 +72,7 @@ func coordinatorMain() {
 		c.triageQueue = append(c.triageQueue, CoordinatorInput{a.data, a.meta, execCorpus, !a.user, true})
 	}
 
-	go coordinatorLoop(c)
-}
-
-func coordinatorLoop(c *Coordinator) {
 	go c.workerLoop()
-
-	// Local buffer helps to avoid deadlocks on chan overflows.
-	printStatsTicker := time.Tick(3 * time.Second)
-	for {
-		select {
-		case <-shutdown.Done():
-			return
-		default:
-		}
-
-		select {
-		case <-shutdown.Done():
-			return
-
-		case <-printStatsTicker:
-			c.sync()
-			c.broadcastStats()
-
-		}
-	}
 }
 
 func (c *Coordinator) broadcastStats() {
