@@ -202,51 +202,29 @@ func coordinatorLoop(c *Coordinator) {
 }
 
 func (c *Coordinator) broadcastStats() {
-	stats := c.coordinatorStats()
-
-	// log to stdout
-	log.Println(stats.String())
-}
-
-func (c *Coordinator) coordinatorStats() coordinatorStats {
 	c.mu.Lock()
 	defer c.mu.Unlock()
+	corpus := uint64(len(c.corpus.m))
+	crashers := uint64(len(c.crashers.m))
+	uptime := time.Since(c.startTime).Truncate(time.Second)
+	startTime := c.startTime
+	lastNewInputTime := c.lastInput
+	execs := c.workerstats.execs
+	cover := uint64(c.coverFullness)
 
-	stats := coordinatorStats{
-		Corpus:           uint64(len(c.corpus.m)),
-		Crashers:         uint64(len(c.crashers.m)),
-		Uptime:           time.Since(c.startTime).Truncate(time.Second),
-		StartTime:        c.startTime,
-		LastNewInputTime: c.lastInput,
-		Execs:            c.workerstats.execs,
-		Cover:            uint64(c.coverFullness),
-	}
-
-	// Print stats line.
+	var restartsDenom uint64
 	if c.workerstats.execs != 0 && c.workerstats.restarts != 0 {
-		stats.RestartsDenom = c.workerstats.execs / c.workerstats.restarts
+		restartsDenom = c.workerstats.execs / c.workerstats.restarts
 	}
 
-	return stats
-}
-
-type coordinatorStats struct {
-	Corpus, Crashers, Execs, Cover, RestartsDenom uint64
-	LastNewInputTime, StartTime                   time.Time
-	Uptime                                        time.Duration
-}
-
-func (s coordinatorStats) String() string {
-	return fmt.Sprintf("corpus: %v (%v ago), crashers: %v,"+
-		" restarts: 1/%v, execs: %v (%.0f/sec), cover: %v, uptime: %v",
-		s.Corpus, time.Since(s.LastNewInputTime).Truncate(time.Second),
-		s.Crashers, s.RestartsDenom, s.Execs, s.ExecsPerSec(), s.Cover,
-		s.Uptime,
+	execsPerSec := float64(execs) * 1e9 / float64(time.Since(startTime))
+	// log to stdout
+	log.Printf("corpus: %v (%v ago), crashers: %v,"+
+		" restarts: 1/%v, execs: %v (%.0f/sec), cover: %v, uptime: %v\n",
+		corpus, time.Since(lastNewInputTime).Truncate(time.Second),
+		crashers, restartsDenom, execs, execsPerSec, cover,
+		uptime,
 	)
-}
-
-func (s coordinatorStats) ExecsPerSec() float64 {
-	return float64(s.Execs) * 1e9 / float64(time.Since(s.StartTime))
 }
 
 // CoordinatorInput is description of input that is passed between coordinator and worker.
