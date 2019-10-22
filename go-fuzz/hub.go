@@ -66,9 +66,7 @@ type Stats struct {
 }
 
 func newHub(c *Coordinator, metadata MetaData) {
-	workers := 1
 	c.corpusSigs = make(map[Sig]struct{})
-	c.newCrasherC = make(chan NewCrasherArgs, workers)
 
 	coverBlocks := make(map[int][]CoverBlock)
 	for _, b := range metadata.Blocks {

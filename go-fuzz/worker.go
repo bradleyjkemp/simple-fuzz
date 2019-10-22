@@ -347,7 +347,29 @@ func (w *Coordinator) processCrasher(crash NewCrasherArgs) {
 			return true
 		})
 	}
-	w.newCrasherC <- crash
+
+	// New crasher from worker. Woohoo!
+	if crash.Hanging || !*flagDup {
+		ro := w.ro.Load().(*ROData)
+		ro1 := new(ROData)
+		*ro1 = *ro
+		if crash.Hanging {
+			ro1.badInputs = make(map[Sig]struct{})
+			for k, v := range ro.badInputs {
+				ro1.badInputs[k] = v
+			}
+			ro1.badInputs[hash(crash.Data)] = struct{}{}
+		}
+		if !*flagDup {
+			ro1.suppressions = make(map[Sig]struct{})
+			for k, v := range ro.suppressions {
+				ro1.suppressions[k] = v
+			}
+			ro1.suppressions[hash(crash.Suppression)] = struct{}{}
+		}
+		w.ro.Store(ro1)
+	}
+	w.NewCrasher(crash)
 }
 
 // minimizeInput applies series of minimizing transformations to data

@@ -26,8 +26,6 @@ type Coordinator struct {
 	corpusSigs  map[Sig]struct{}
 	corpusStale bool
 
-	newCrasherC chan NewCrasherArgs
-
 	corpusOrigins [execCount]uint64
 	mutator       *Mutator
 
@@ -97,31 +95,6 @@ func coordinatorLoop(c *Coordinator) {
 			c.sync()
 			c.broadcastStats()
 
-		case crash := <-c.newCrasherC:
-			// New crasher from worker. Woohoo!
-			if crash.Hanging || !*flagDup {
-				ro := c.ro.Load().(*ROData)
-				ro1 := new(ROData)
-				*ro1 = *ro
-				if crash.Hanging {
-					ro1.badInputs = make(map[Sig]struct{})
-					for k, v := range ro.badInputs {
-						ro1.badInputs[k] = v
-					}
-					ro1.badInputs[hash(crash.Data)] = struct{}{}
-				}
-				if !*flagDup {
-					ro1.suppressions = make(map[Sig]struct{})
-					for k, v := range ro.suppressions {
-						ro1.suppressions[k] = v
-					}
-					ro1.suppressions[hash(crash.Suppression)] = struct{}{}
-				}
-				c.ro.Store(ro1)
-			}
-			if err := c.NewCrasher(&crash, nil); err != nil {
-				log.Printf("new crasher call failed: %v", err)
-			}
 		}
 	}
 }
@@ -189,15 +162,15 @@ type NewCrasherArgs struct {
 }
 
 // NewCrasher saves new crasher input on coordinator.
-func (c *Coordinator) NewCrasher(a *NewCrasherArgs, r *int) error {
+func (c *Coordinator) NewCrasher(a NewCrasherArgs) {
 	c.mu.Lock()
 	defer c.mu.Unlock()
 
 	if !*flagDup && !c.suppressions.add(Artifact{a.Suppression, 0, false}) {
-		return nil // Already have this.
+		return // Already have this.
 	}
 	if !c.crashers.add(Artifact{a.Data, 0, false}) {
-		return nil // Already have this.
+		return // Already have this.
 	}
 
 	// Prepare quoted version of input to simplify creation of standalone reproducers.
@@ -215,8 +188,6 @@ func (c *Coordinator) NewCrasher(a *NewCrasherArgs, r *int) error {
 	}
 	c.crashers.addDescription(a.Data, buf.Bytes(), "quoted")
 	c.crashers.addDescription(a.Data, a.Error, "output")
-
-	return nil
 }
 
 // Sync is a periodic sync with a worker.
