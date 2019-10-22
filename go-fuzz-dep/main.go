@@ -17,7 +17,6 @@ func Main(fns []func([]byte) int) {
 	mem, inFD, outFD := setupCommFile()
 	CoverTab = (*[CoverSize]byte)(unsafe.Pointer(&mem[0]))
 	input := mem[CoverSize : CoverSize+MaxInputSize]
-	sonarRegion = mem[CoverSize+MaxInputSize:]
 	runtime.GOMAXPROCS(1) // makes coverage more deterministic, we parallelize on higher level
 	for {
 		fnidx, n := read(inFD)
@@ -32,7 +31,7 @@ func Main(fns []func([]byte) int) {
 		t0 := time.Now()
 		res := fns[fnidx](input[:n:n])
 		ns := time.Since(t0)
-		write(outFD, uint64(res), uint64(ns), uint64(atomic.LoadUint32(&sonarPos)))
+		write(outFD, uint64(res), uint64(ns))
 	}
 }
 
@@ -93,4 +92,29 @@ func writeStr(fd FD, s string) {
 		}
 		wr += n
 	}
+}
+
+func serialize64(buf []byte, v uint64) uint8 {
+	_ = buf[7]
+	buf[0] = byte(v >> 0)
+	buf[1] = byte(v >> 8)
+	buf[2] = byte(v >> 16)
+	buf[3] = byte(v >> 24)
+	buf[4] = byte(v >> 32)
+	buf[5] = byte(v >> 40)
+	buf[6] = byte(v >> 48)
+	buf[7] = byte(v >> 56)
+	return 8
+}
+
+func deserialize64(buf []byte) uint64 {
+	_ = buf[7]
+	return uint64(buf[0])<<0 |
+		uint64(buf[1])<<8 |
+		uint64(buf[2])<<16 |
+		uint64(buf[3])<<24 |
+		uint64(buf[4])<<32 |
+		uint64(buf[5])<<40 |
+		uint64(buf[6])<<48 |
+		uint64(buf[7])<<56
 }

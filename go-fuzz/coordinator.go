@@ -30,7 +30,6 @@ type Coordinator struct {
 	mutator       *Mutator
 
 	coverBin *TestBinary
-	sonarBin *TestBinary
 
 	triageQueue  []CoordinatorInput
 	crasherQueue []NewCrasherArgs

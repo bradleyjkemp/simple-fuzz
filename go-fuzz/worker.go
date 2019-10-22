@@ -40,23 +40,6 @@ const (
 	execCount
 )
 
-// Worker manages one testee.
-type Worker struct {
-	id int
-	*Hub
-	mutator *Mutator
-
-	coverBin *TestBinary
-	sonarBin *TestBinary
-
-	triageQueue  []CoordinatorInput
-	crasherQueue []NewCrasherArgs
-
-	lastSync time.Time
-	stats    Stats
-	execs    [execCount]uint64
-}
-
 type Input struct {
 	mine            bool
 	data            []byte
@@ -105,8 +88,6 @@ func newWorker(c *Coordinator) {
 			switch zipf.Name {
 			case "cover.exe":
 				coverBin = f.Name()
-			case "sonar.exe":
-				sonarBin = f.Name()
 			default:
 				log.Fatalf("unknown file '%v' in input archive", f.Name())
 			}
@@ -114,7 +95,7 @@ func newWorker(c *Coordinator) {
 		r.Close()
 	}
 	zipr.Close()
-	if coverBin == "" || sonarBin == "" || len(metadata.Blocks) == 0 || len(metadata.Funcs) == 0 {
+	if coverBin == "" || len(metadata.Blocks) == 0 || len(metadata.Funcs) == 0 {
 		log.Fatalf("bad input archive: missing file")
 	}
 
@@ -156,7 +137,6 @@ func newWorker(c *Coordinator) {
 	newHub(c, metadata)
 	c.mutator = newMutator()
 	c.coverBin = newTestBinary(coverBin, c.periodicCheck, &c.workerstats, uint8(fnidx))
-	c.sonarBin = newTestBinary(sonarBin, c.periodicCheck, &c.workerstats, uint8(fnidx))
 }
 
 func (w *Coordinator) workerLoop() {
@@ -599,10 +579,6 @@ func (w *Coordinator) testInput(data []byte, depth int, typ execType) {
 	w.testInputImpl(w.coverBin, data, depth, typ)
 }
 
-func (w *Coordinator) testInputSonar(data []byte, depth int) (sonar []byte) {
-	return w.testInputImpl(w.sonarBin, data, depth, execSonar)
-}
-
 func (w *Coordinator) testInputImpl(bin *TestBinary, data []byte, depth int, typ execType) (sonar []byte) {
 	ro := w.ro.Load().(*ROData)
 	if len(ro.badInputs) > 0 {
@@ -666,7 +642,6 @@ func (w *Coordinator) periodicCheck() {
 // shutdown cleanups after worker, it is not guaranteed to be called.
 func (w *Coordinator) shutdown() {
 	w.coverBin.close()
-	w.sonarBin.close()
 }
 
 func extractSuppression(out []byte) []byte {

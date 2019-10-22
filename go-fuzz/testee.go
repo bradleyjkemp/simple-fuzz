@@ -30,7 +30,7 @@ type Testee struct {
 	outPipe     *os.File
 	stdoutPipe  *os.File
 	writebuf    [9]byte  // reusable write buffer
-	resbuf      [24]byte // reusable results buffer
+	resbuf      [16]byte // reusable results buffer
 	execs       int
 	startTime   int64
 	outputC     chan []byte
@@ -115,7 +115,7 @@ func (bin *TestBinary) test(data []byte) (res int, ns uint64, cover, sonar, outp
 			bin.testee = newTestee(bin.fileName, bin.comm, bin.coverRegion, bin.inputRegion, bin.sonarRegion, bin.fnidx, bin.testeeBuffer)
 		}
 		var retry bool
-		res, ns, cover, sonar, crashed, hanged, retry = bin.testee.test(data)
+		res, ns, cover, crashed, hanged, retry = bin.testee.test(data)
 		if retry {
 			bin.testee.shutdown()
 			bin.testee = nil
@@ -255,7 +255,7 @@ retry:
 }
 
 // test passes data for testing.
-func (t *Testee) test(data []byte) (res int, ns uint64, cover, sonar []byte, crashed, hanged, retry bool) {
+func (t *Testee) test(data []byte) (res int, ns uint64, cover []byte, crashed, hanged, retry bool) {
 	if t.down {
 		log.Fatalf("cannot test: testee is already shutdown")
 	}
@@ -283,15 +283,13 @@ func (t *Testee) test(data []byte) (res int, ns uint64, cover, sonar []byte, cra
 	// Once we do the write, the test is running.
 	// Once we read the reply below, the test is done.
 	type Reply struct {
-		Res   uint64
-		Ns    uint64
-		Sonar uint64
+		Res uint64
+		Ns  uint64
 	}
 	_, err := io.ReadFull(t.inPipe, t.resbuf[:])
 	r := Reply{
-		Res:   binary.LittleEndian.Uint64(t.resbuf[:]),
-		Ns:    binary.LittleEndian.Uint64(t.resbuf[8:]),
-		Sonar: binary.LittleEndian.Uint64(t.resbuf[16:]),
+		Res: binary.LittleEndian.Uint64(t.resbuf[:]),
+		Ns:  binary.LittleEndian.Uint64(t.resbuf[8:]),
 	}
 	hanged = atomic.LoadInt64(&t.startTime) == -1
 	atomic.StoreInt64(&t.startTime, 0)
@@ -303,7 +301,6 @@ func (t *Testee) test(data []byte) (res int, ns uint64, cover, sonar []byte, cra
 	res = int(r.Res)
 	ns = r.Ns
 	cover = t.coverRegion
-	sonar = t.sonarRegion[:r.Sonar]
 	return
 }
 

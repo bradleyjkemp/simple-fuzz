@@ -31,12 +31,12 @@ import (
 )
 
 var (
-	flagOut       = flag.String("o", "", "output file")
-	flagFunc      = flag.String("func", "", "preferred entry function")
-	flagWork      = flag.Bool("work", false, "don't remove working directory")
-	flagCPU       = flag.Bool("cpuprofile", false, "generate cpu profile in cpu.pprof")
-	flagBuildX    = flag.Bool("x", false, "print the commands if build fails")
-	flagPreserve  = flag.String("preserve", "", "a comma-separated list of import paths not to instrument")
+	flagOut      = flag.String("o", "", "output file")
+	flagFunc     = flag.String("func", "", "preferred entry function")
+	flagWork     = flag.Bool("work", false, "don't remove working directory")
+	flagCPU      = flag.Bool("cpuprofile", false, "generate cpu profile in cpu.pprof")
+	flagBuildX   = flag.Bool("x", false, "print the commands if build fails")
+	flagPreserve = flag.String("preserve", "", "a comma-separated list of import paths not to instrument")
 )
 
 // basePackagesConfig returns a base golang.org/x/tools/go/packages.Config
@@ -46,7 +46,7 @@ func basePackagesConfig() *packages.Config {
 
 	goFuzzModule, isGoFuzzModuleSet := os.LookupEnv("GOFUZZ111MODULE")
 	if isGoFuzzModuleSet {
-		cfg.Env = append(os.Environ(), "GO111MODULE=" + goFuzzModule)
+		cfg.Env = append(os.Environ(), "GO111MODULE="+goFuzzModule)
 	} else {
 		cfg.Env = append(os.Environ(), "GO111MODULE=off")
 	}
@@ -102,14 +102,12 @@ func main() {
 	// We'd need to implement that support ourselves. (It's do-able but non-trivial.)
 	// See also https://golang.org/issue/29824.
 	lits := c.gatherLiterals()
-	var blocks, sonar []CoverBlock
+	var blocks []CoverBlock
 
-	coverBin := c.buildInstrumentedBinary(&blocks, nil)
-	sonarBin := c.buildInstrumentedBinary(nil, &sonar)
-	metaData := c.createMeta(lits, blocks, sonar)
+	coverBin := c.buildInstrumentedBinary(&blocks)
+	metaData := c.createMeta(lits, blocks)
 	defer func() {
 		os.Remove(coverBin)
-		os.Remove(sonarBin)
 		os.Remove(metaData)
 	}()
 
@@ -135,7 +133,6 @@ func main() {
 		os.Remove(datafile)
 	}
 	zipFile("cover.exe", coverBin)
-	zipFile("sonar.exe", sonarBin)
 	zipFile("metadata", metaData)
 	if err := zipw.Close(); err != nil {
 		c.failf("failed to close zip file: %v", err)
@@ -424,8 +421,8 @@ func (c *Context) populateWorkdir() {
 	c.copyFuzzDep()
 }
 
-func (c *Context) createMeta(lits map[Literal]struct{}, blocks []CoverBlock, sonar []CoverBlock) string {
-	meta := MetaData{Blocks: blocks, Sonar: sonar, Funcs: c.allFuncs, DefaultFunc: *flagFunc}
+func (c *Context) createMeta(lits map[Literal]struct{}, blocks []CoverBlock) string {
+	meta := MetaData{Blocks: blocks, Funcs: c.allFuncs, DefaultFunc: *flagFunc}
 	for k := range lits {
 		meta.Literals = append(meta.Literals, k)
 	}
@@ -438,8 +435,8 @@ func (c *Context) createMeta(lits map[Literal]struct{}, blocks []CoverBlock, son
 	return f
 }
 
-func (c *Context) buildInstrumentedBinary(blocks *[]CoverBlock, sonar *[]CoverBlock) string {
-	c.instrumentPackages(blocks, sonar)
+func (c *Context) buildInstrumentedBinary(blocks *[]CoverBlock) string {
+	c.instrumentPackages(blocks)
 	mainPkg := c.createFuzzMain()
 	outf := c.tempFile()
 	args := []string{"build"}
@@ -613,7 +610,7 @@ func (c *Context) packagesNamed(paths ...string) (pkgs []*packages.Package) {
 	return pkgs
 }
 
-func (c *Context) instrumentPackages(blocks *[]CoverBlock, sonar *[]CoverBlock) {
+func (c *Context) instrumentPackages(blocks *[]CoverBlock) {
 	visit := func(pkg *packages.Package) {
 		if c.ignore[pkg.PkgPath] {
 			return
@@ -643,7 +640,7 @@ func (c *Context) instrumentPackages(blocks *[]CoverBlock, sonar *[]CoverBlock) 
 			buf := new(bytes.Buffer)
 			content := c.readFile(fullName)
 			buf.Write(initialComments(content)) // Retain '// +build' directives.
-			instrument(pkg.PkgPath, fullName, pkg.Fset, f, pkg.TypesInfo, buf, blocks, sonar)
+			instrument(pkg.PkgPath, fullName, pkg.Fset, f, pkg.TypesInfo, buf, blocks)
 			tmp := c.tempFile()
 			c.writeFile(tmp, buf.Bytes())
 			outpath := filepath.Join(path, fname)
@@ -758,4 +755,3 @@ func main() {
 	dep.Main(fns)
 }
 `))
-
