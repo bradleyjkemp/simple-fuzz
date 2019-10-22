@@ -215,7 +215,7 @@ func (c *Coordinator) coordinatorStats() coordinatorStats {
 	stats := coordinatorStats{
 		Corpus:           uint64(len(c.corpus.m)),
 		Crashers:         uint64(len(c.crashers.m)),
-		Uptime:           fmtDuration(time.Since(c.startTime)),
+		Uptime:           time.Since(c.startTime).Truncate(time.Second),
 		StartTime:        c.startTime,
 		LastNewInputTime: c.lastInput,
 		Execs:            c.workerstats.execs,
@@ -233,13 +233,13 @@ func (c *Coordinator) coordinatorStats() coordinatorStats {
 type coordinatorStats struct {
 	Corpus, Crashers, Execs, Cover, RestartsDenom uint64
 	LastNewInputTime, StartTime                   time.Time
-	Uptime                                        string
+	Uptime                                        time.Duration
 }
 
 func (s coordinatorStats) String() string {
 	return fmt.Sprintf("corpus: %v (%v ago), crashers: %v,"+
 		" restarts: 1/%v, execs: %v (%.0f/sec), cover: %v, uptime: %v",
-		s.Corpus, fmtDuration(time.Since(s.LastNewInputTime)),
+		s.Corpus, time.Since(s.LastNewInputTime).Truncate(time.Second),
 		s.Crashers, s.RestartsDenom, s.Execs, s.ExecsPerSec(), s.Cover,
 		s.Uptime,
 	)
@@ -247,16 +247,6 @@ func (s coordinatorStats) String() string {
 
 func (s coordinatorStats) ExecsPerSec() float64 {
 	return float64(s.Execs) * 1e9 / float64(time.Since(s.StartTime))
-}
-
-func fmtDuration(d time.Duration) string {
-	if d.Hours() >= 1 {
-		return fmt.Sprintf("%vh%vm", int(d.Hours()), int(d.Minutes())%60)
-	} else if d.Minutes() >= 1 {
-		return fmt.Sprintf("%vm%vs", int(d.Minutes()), int(d.Seconds())%60)
-	} else {
-		return fmt.Sprintf("%vs", int(d.Seconds()))
-	}
 }
 
 // CoordinatorInput is description of input that is passed between coordinator and worker.
