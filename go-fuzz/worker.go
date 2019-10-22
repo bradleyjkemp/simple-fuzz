@@ -282,7 +282,52 @@ func (w *Coordinator) triageInput(input CoordinatorInput) {
 			inp.coverSize++
 		}
 	}
-	w.newInputC <- inp
+
+	// New interesting input from worker.
+	ro := w.ro.Load().(*ROData)
+	if !compareCover(ro.corpusCover, inp.cover) {
+		return
+	}
+	sig := hash(inp.data)
+	if _, ok := w.corpusSigs[sig]; ok {
+		return
+	}
+
+	// Passed deduplication, taking it.
+	if *flagV >= 2 {
+		log.Printf("hub received new input [%v]%v mine=%v", len(inp.data), hash(inp.data), inp.mine)
+	}
+	w.corpusSigs[sig] = struct{}{}
+	ro1 := new(ROData)
+	*ro1 = *ro
+	// Assign it the default score, but mark corpus for score recalculation.
+	w.corpusStale = true
+	scoreSum := 0
+	if len(ro1.corpus) > 0 {
+		scoreSum = ro1.corpus[len(ro1.corpus)-1].runningScoreSum
+	}
+	inp.score = defScore
+	inp.runningScoreSum = scoreSum + defScore
+	ro1.corpus = append(ro1.corpus, inp)
+	w.updateMaxCover(inp.cover)
+	ro1.corpusCover = makeCopy(ro.corpusCover)
+	corpusCoverSize := updateMaxCover(ro1.corpusCover, inp.cover)
+	if w.coverFullness < corpusCoverSize {
+		w.coverFullness = corpusCoverSize
+	}
+	w.ro.Store(ro1)
+	w.corpusOrigins[inp.typ]++
+
+	if inp.mine {
+		if err := w.NewInput(&NewInputArgs{inp.data, uint64(inp.depth)}, nil); err != nil {
+			log.Printf("failed to connect to coordinator: %v, killing worker", err)
+			return
+		}
+	}
+
+	if *flagDumpCover {
+		dumpCover(filepath.Join(*flagWorkdir, "coverprofile"), ro.coverBlocks, ro.corpusCover)
+	}
 }
 
 // processCrasher minimizes new crashers and sends them to the hub.

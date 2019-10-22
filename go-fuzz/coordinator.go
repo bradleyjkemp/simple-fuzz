@@ -26,7 +26,6 @@ type Coordinator struct {
 	corpusSigs  map[Sig]struct{}
 	corpusStale bool
 
-	newInputC   chan Input
 	newCrasherC chan NewCrasherArgs
 
 	corpusOrigins [execCount]uint64
@@ -97,53 +96,6 @@ func coordinatorLoop(c *Coordinator) {
 		case <-printStatsTicker:
 			c.sync()
 			c.broadcastStats()
-
-		case input := <-c.newInputC:
-			// New interesting input from worker.
-			ro := c.ro.Load().(*ROData)
-			if !compareCover(ro.corpusCover, input.cover) {
-				break
-			}
-			sig := hash(input.data)
-			if _, ok := c.corpusSigs[sig]; ok {
-				break
-			}
-
-			// Passed deduplication, taking it.
-			if *flagV >= 2 {
-				log.Printf("hub received new input [%v]%v mine=%v", len(input.data), hash(input.data), input.mine)
-			}
-			c.corpusSigs[sig] = struct{}{}
-			ro1 := new(ROData)
-			*ro1 = *ro
-			// Assign it the default score, but mark corpus for score recalculation.
-			c.corpusStale = true
-			scoreSum := 0
-			if len(ro1.corpus) > 0 {
-				scoreSum = ro1.corpus[len(ro1.corpus)-1].runningScoreSum
-			}
-			input.score = defScore
-			input.runningScoreSum = scoreSum + defScore
-			ro1.corpus = append(ro1.corpus, input)
-			c.updateMaxCover(input.cover)
-			ro1.corpusCover = makeCopy(ro.corpusCover)
-			corpusCoverSize := updateMaxCover(ro1.corpusCover, input.cover)
-			if c.coverFullness < corpusCoverSize {
-				c.coverFullness = corpusCoverSize
-			}
-			c.ro.Store(ro1)
-			c.corpusOrigins[input.typ]++
-
-			if input.mine {
-				if err := c.NewInput(&NewInputArgs{input.data, uint64(input.depth)}, nil); err != nil {
-					log.Printf("failed to connect to coordinator: %v, killing worker", err)
-					return
-				}
-			}
-
-			if *flagDumpCover {
-				dumpCover(filepath.Join(*flagWorkdir, "coverprofile"), ro.coverBlocks, ro.corpusCover)
-			}
 
 		case crash := <-c.newCrasherC:
 			// New crasher from worker. Woohoo!
