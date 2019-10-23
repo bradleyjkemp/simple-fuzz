@@ -7,7 +7,6 @@ import (
 	"encoding/binary"
 	"math/bits"
 	"math/rand"
-	"sort"
 	"strconv"
 
 	. "github.com/bradleyjkemp/simple-fuzz/go-fuzz-defs"
@@ -49,12 +48,7 @@ func (m *Mutator) randByteOrder() binary.ByteOrder {
 
 func (m *Mutator) generate(ro *ROData) ([]byte, int) {
 	corpus := ro.corpus
-	scoreSum := corpus[len(corpus)-1].runningScoreSum
-	weightedIdx := m.rand(scoreSum)
-	idx := sort.Search(len(corpus), func(i int) bool {
-		return corpus[i].runningScoreSum > weightedIdx
-	})
-	input := &corpus[idx]
+	input := &corpus[m.rand(len(corpus))]
 	return m.mutate(input.data, ro), input.depth + 1
 }
 

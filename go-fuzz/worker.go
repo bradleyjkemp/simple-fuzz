@@ -293,7 +293,6 @@ func (w *Coordinator) triageInput(input CoordinatorInput) {
 	}
 	w.corpusSigs[sig] = struct{}{}
 	// Assign it the default score, but mark corpus for score recalculation.
-	w.corpusStale = true
 	scoreSum := 0
 	if len(w.ro.corpus) > 0 {
 		scoreSum = w.ro.corpus[len(w.ro.corpus)-1].runningScoreSum

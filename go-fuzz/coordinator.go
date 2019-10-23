@@ -23,7 +23,6 @@ type Coordinator struct {
 	maxCover   atomic.Value // []byte
 
 	corpusSigs  map[Sig]struct{}
-	corpusStale bool
 
 	corpusOrigins [execCount]uint64
 	mutator       *Mutator
@@ -44,12 +43,6 @@ type Coordinator struct {
 	startTime     time.Time
 	lastInput     time.Time
 	coverFullness int
-}
-
-// CoordinatorWorker represents coordinator's view of a worker.
-type CoordinatorWorker struct {
-	id    int
-	procs int
 }
 
 // coordinatorMain is entry function for coordinator.
@@ -178,10 +171,5 @@ func (c *Coordinator) sync() {
 			c.corpusOrigins[execMinimizeInput]+c.corpusOrigins[execMinimizeCrasher],
 			c.corpusOrigins[execVersifier], c.corpusOrigins[execSmash],
 			c.corpusOrigins[execSonarHint])
-	}
-
-	if c.corpusStale {
-		c.updateScores()
-		c.corpusStale = false
 	}
 }
