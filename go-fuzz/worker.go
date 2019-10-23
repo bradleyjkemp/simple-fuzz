@@ -11,12 +11,10 @@ import (
 	"io"
 	"io/ioutil"
 	"log"
-	"math/bits"
 	"os"
 	"path/filepath"
 	"strings"
 	"time"
-	"unsafe"
 
 	. "github.com/bradleyjkemp/simple-fuzz/go-fuzz-defs"
 	. "github.com/bradleyjkemp/simple-fuzz/go-fuzz-types"
@@ -268,8 +266,6 @@ func (w *Coordinator) triageInput(input CoordinatorInput) {
 			}
 			return true
 		})
-	} else if !input.Smashed {
-		w.smash(inp.data, inp.depth)
 	}
 	inp.coverSize = 0
 	for _, v := range inp.cover {
@@ -432,145 +428,6 @@ func (w *Coordinator) minimizeInput(data []byte, canonicalize bool, pred func(ca
 	}
 
 	return res
-}
-
-// smash gives some minimal attention to every new input.
-func (w *Coordinator) smash(data []byte, depth int) {
-	// Flip each bit one-by-one.
-	for i := 0; i < len(data)*8; i++ {
-		data[i/8] ^= 1 << uint(i%8)
-		w.testInput(data, depth, execSmash)
-		data[i/8] ^= 1 << uint(i%8)
-	}
-
-	// Two walking bits.
-	for i := 0; i < len(data)*8-1; i++ {
-		data[i/8] ^= 1 << uint(i%8)
-		data[(i+1)/8] ^= 1 << uint((i+1)%8)
-		w.testInput(data, depth, execSmash)
-		data[i/8] ^= 1 << uint(i%8)
-		data[(i+1)/8] ^= 1 << uint((i+1)%8)
-	}
-
-	// Four walking bits.
-	for i := 0; i < len(data)*8-3; i++ {
-		data[i/8] ^= 1 << uint(i%8)
-		data[(i+1)/8] ^= 1 << uint((i+1)%8)
-		data[(i+2)/8] ^= 1 << uint((i+2)%8)
-		data[(i+3)/8] ^= 1 << uint((i+3)%8)
-		w.testInput(data, depth, execSmash)
-		data[i/8] ^= 1 << uint(i%8)
-		data[(i+1)/8] ^= 1 << uint((i+1)%8)
-		data[(i+2)/8] ^= 1 << uint((i+2)%8)
-		data[(i+3)/8] ^= 1 << uint((i+3)%8)
-	}
-
-	// Byte flip.
-	for i := 0; i < len(data); i++ {
-		data[i] ^= 0xff
-		w.testInput(data, depth, execSmash)
-		data[i] ^= 0xff
-	}
-
-	// Two walking bytes.
-	for i := 0; i < len(data)-1; i++ {
-		data[i] ^= 0xff
-		data[i+1] ^= 0xff
-		w.testInput(data, depth, execSmash)
-		data[i] ^= 0xff
-		data[i+1] ^= 0xff
-	}
-
-	// Four walking bytes.
-	for i := 0; i < len(data)-3; i++ {
-		data[i] ^= 0xff
-		data[i+1] ^= 0xff
-		data[i+2] ^= 0xff
-		data[i+3] ^= 0xff
-		w.testInput(data, depth, execSmash)
-		data[i] ^= 0xff
-		data[i+1] ^= 0xff
-		data[i+2] ^= 0xff
-		data[i+3] ^= 0xff
-	}
-
-	// Increment/decrement every byte.
-	for i := 0; i < len(data); i++ {
-		for j := uint8(1); j <= 4; j++ {
-			data[i] += j
-			w.testInput(data, depth, execSmash)
-			data[i] -= j
-			data[i] -= j
-			w.testInput(data, depth, execSmash)
-			data[i] += j
-		}
-	}
-
-	// Set bytes to interesting values.
-	for i := 0; i < len(data); i++ {
-		v := data[i]
-		for _, x := range interesting8 {
-			data[i] = uint8(x)
-			w.testInput(data, depth, execSmash)
-		}
-		data[i] = v
-	}
-
-	// Set words to interesting values.
-	for i := 0; i < len(data)-1; i++ {
-		p := (*int16)(unsafe.Pointer(&data[i]))
-		v := *p
-		for _, x := range interesting16 {
-			*p = x
-			w.testInput(data, depth, execSmash)
-			if x != 0 && x != -1 {
-				*p = int16(bits.ReverseBytes16(uint16(x)))
-				w.testInput(data, depth, execSmash)
-			}
-		}
-		*p = v
-	}
-
-	// Set double-words to interesting values.
-	for i := 0; i < len(data)-3; i++ {
-		p := (*int32)(unsafe.Pointer(&data[i]))
-		v := *p
-		for _, x := range interesting32 {
-			*p = x
-			w.testInput(data, depth, execSmash)
-			if x != 0 && x != -1 {
-				*p = int32(bits.ReverseBytes32(uint32(x)))
-				w.testInput(data, depth, execSmash)
-			}
-		}
-		*p = v
-	}
-
-	// Trim after every byte.
-	for i := 1; i < len(data); i++ {
-		tmp := data[:i]
-		w.testInput(tmp, depth, execSmash)
-	}
-
-	// Insert a byte after every byte.
-	tmp := make([]byte, len(data)+1)
-	if len(tmp) > MaxInputSize {
-		tmp = tmp[:MaxInputSize]
-	}
-	for i := 0; i <= len(data) && i < MaxInputSize-1; i++ {
-		copy(tmp, data[:i])
-		copy(tmp[i+1:], data[i:])
-		tmp[i] = 0
-		w.testInput(tmp, depth, execSmash)
-		tmp[i] = 'a'
-		w.testInput(tmp, depth, execSmash)
-	}
-
-	// Do a bunch of random mutations so that this input catches up with the rest.
-	for i := 0; i < 1e4; i++ {
-		tmp := w.mutator.mutate(data, w.ro)
-		w.testInput(tmp, depth+1, execFuzz)
-	}
 }
 
 func (w *Coordinator) testInput(data []byte, depth int, typ execType) {
