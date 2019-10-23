@@ -5,7 +5,6 @@ package gofuzzdep
 
 import (
 	"runtime"
-	"sync/atomic"
 	"syscall"
 	"time"
 	"unsafe"
@@ -27,7 +26,6 @@ func Main(fns []func([]byte) int) {
 		for i := range CoverTab {
 			CoverTab[i] = 0
 		}
-		atomic.StoreUint32(&sonarPos, 0)
 		t0 := time.Now()
 		res := fns[fnidx](input[:n:n])
 		ns := time.Since(t0)

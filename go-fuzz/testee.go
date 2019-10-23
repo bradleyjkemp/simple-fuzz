@@ -24,7 +24,6 @@ import (
 type Testee struct {
 	coverRegion []byte
 	inputRegion []byte
-	sonarRegion []byte
 	cmd         *exec.Cmd
 	inPipe      *os.File
 	outPipe     *os.File
@@ -48,7 +47,6 @@ type TestBinary struct {
 
 	coverRegion []byte
 	inputRegion []byte
-	sonarRegion []byte
 
 	testee       *Testee
 	testeeBuffer []byte // reusable buffer for collecting testee output
@@ -74,17 +72,16 @@ func newTestBinary(fileName string, periodicCheck func(), stats *Stats, fnidx ui
 	if err != nil {
 		log.Fatalf("failed to create comm file: %v", err)
 	}
-	comm.Truncate(CoverSize + MaxInputSize + SonarRegionSize)
+	comm.Truncate(CoverSize + MaxInputSize)
 	comm.Close()
-	mapping, mem := createMapping(comm.Name(), CoverSize+MaxInputSize+SonarRegionSize)
+	mapping, mem := createMapping(comm.Name(), CoverSize+MaxInputSize)
 	return &TestBinary{
 		fileName:      fileName,
 		commFile:      comm.Name(),
 		comm:          mapping,
 		periodicCheck: periodicCheck,
 		coverRegion:   mem[:CoverSize],
-		inputRegion:   mem[CoverSize : CoverSize+SonarRegionSize],
-		sonarRegion:   mem[CoverSize+SonarRegionSize:],
+		inputRegion:   mem[CoverSize:],
 		stats:         stats,
 		fnidx:         fnidx,
 		testeeBuffer:  make([]byte, testeeBufferSize),
@@ -100,7 +97,7 @@ func (bin *TestBinary) close() {
 	os.Remove(bin.commFile)
 }
 
-func (bin *TestBinary) test(data []byte) (res int, ns uint64, cover, sonar, output []byte, crashed, hanged bool) {
+func (bin *TestBinary) test(data []byte) (res int, ns uint64, cover, output []byte, crashed, hanged bool) {
 	if len(data) > MaxInputSize {
 		panic("input is too large")
 	}
@@ -112,7 +109,7 @@ func (bin *TestBinary) test(data []byte) (res int, ns uint64, cover, sonar, outp
 		bin.stats.execs++
 		if bin.testee == nil {
 			bin.stats.restarts++
-			bin.testee = newTestee(bin.fileName, bin.comm, bin.coverRegion, bin.inputRegion, bin.sonarRegion, bin.fnidx, bin.testeeBuffer)
+			bin.testee = newTestee(bin.fileName, bin.comm, bin.coverRegion, bin.inputRegion, bin.fnidx, bin.testeeBuffer)
 		}
 		var retry bool
 		res, ns, cover, crashed, hanged, retry = bin.testee.test(data)
@@ -134,7 +131,7 @@ func (bin *TestBinary) test(data []byte) (res int, ns uint64, cover, sonar, outp
 	}
 }
 
-func newTestee(bin string, comm *Mapping, coverRegion, inputRegion, sonarRegion []byte, fnidx uint8, buffer []byte) *Testee {
+func newTestee(bin string, comm *Mapping, coverRegion, inputRegion []byte, fnidx uint8, buffer []byte) *Testee {
 retry:
 	rIn, wIn, err := os.Pipe()
 	if err != nil {
@@ -178,7 +175,6 @@ retry:
 	t := &Testee{
 		coverRegion: coverRegion,
 		inputRegion: inputRegion,
-		sonarRegion: sonarRegion,
 		cmd:         cmd,
 		inPipe:      rIn,
 		outPipe:     wOut,

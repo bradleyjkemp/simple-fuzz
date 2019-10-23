@@ -57,7 +57,7 @@ func newWorker(c *Coordinator) {
 	if err != nil {
 		log.Fatalf("failed to open bin file: %v", err)
 	}
-	var coverBin, sonarBin string
+	var coverBin string
 	var metadata MetaData
 	for _, zipf := range zipr.File {
 		r, err := zipf.Open()
@@ -99,7 +99,6 @@ func newWorker(c *Coordinator) {
 
 	cleanup := func() {
 		os.Remove(coverBin)
-		os.Remove(sonarBin)
 	}
 
 	// Which function should we fuzz?
@@ -222,7 +221,7 @@ func (w *Coordinator) triageInput(input CoordinatorInput) {
 	// Calculate min exec time, min coverage and max result of 3 runs.
 	for i := 0; i < 3; i++ {
 		w.execs[execTriageInput]++
-		res, ns, cover, _, output, crashed, hanged := w.coverBin.test(inp.data)
+		res, ns, cover, output, crashed, hanged := w.coverBin.test(inp.data)
 		if crashed {
 			// Inputs in corpus should not crash.
 			w.noteCrasher(inp.data, output, hanged)
@@ -361,7 +360,7 @@ func (w *Coordinator) minimizeInput(data []byte, canonicalize bool, pred func(ca
 			}
 			candidate := res[:len(res)-n]
 			*stat++
-			result, _, cover, _, output, crashed, hanged := w.coverBin.test(candidate)
+			result, _, cover, output, crashed, hanged := w.coverBin.test(candidate)
 			if !pred(candidate, cover, output, result, crashed, hanged) {
 				break
 			}
@@ -379,7 +378,7 @@ func (w *Coordinator) minimizeInput(data []byte, canonicalize bool, pred func(ca
 		copy(candidate[:i], res[:i])
 		copy(candidate[i:], res[i+1:])
 		*stat++
-		result, _, cover, _, output, crashed, hanged := w.coverBin.test(candidate)
+		result, _, cover, output, crashed, hanged := w.coverBin.test(candidate)
 		if !pred(candidate, cover, output, result, crashed, hanged) {
 			continue
 		}
@@ -397,7 +396,7 @@ func (w *Coordinator) minimizeInput(data []byte, canonicalize bool, pred func(ca
 			candidate := tmp[:len(res)-j+i]
 			copy(candidate[i:], res[j:])
 			*stat++
-			result, _, cover, _, output, crashed, hanged := w.coverBin.test(candidate)
+			result, _, cover, output, crashed, hanged := w.coverBin.test(candidate)
 			if !pred(candidate, cover, output, result, crashed, hanged) {
 				continue
 			}
@@ -419,7 +418,7 @@ func (w *Coordinator) minimizeInput(data []byte, canonicalize bool, pred func(ca
 			copy(candidate, res)
 			candidate[i] = '0'
 			*stat++
-			result, _, cover, _, output, crashed, hanged := w.coverBin.test(candidate)
+			result, _, cover, output, crashed, hanged := w.coverBin.test(candidate)
 			if !pred(candidate, cover, output, result, crashed, hanged) {
 				continue
 			}
@@ -434,18 +433,17 @@ func (w *Coordinator) testInput(data []byte, depth int, typ execType) {
 	w.testInputImpl(w.coverBin, data, depth, typ)
 }
 
-func (w *Coordinator) testInputImpl(bin *TestBinary, data []byte, depth int, typ execType) (sonar []byte) {
+func (w *Coordinator) testInputImpl(bin *TestBinary, data []byte, depth int, typ execType) {
 	if _, ok := w.ro.badInputs[hash(data)]; ok {
-		return nil // no, thanks
+		return // no, thanks
 	}
 	w.execs[typ]++
-	res, _, cover, sonar, output, crashed, hanged := bin.test(data)
+	res, _, cover, output, crashed, hanged := bin.test(data)
 	if crashed {
 		w.noteCrasher(data, output, hanged)
-		return nil
+		return
 	}
 	w.noteNewInput(data, cover, res, depth, typ)
-	return sonar
 }
 
 func (w *Coordinator) noteNewInput(data, cover []byte, res, depth int, typ execType) {
