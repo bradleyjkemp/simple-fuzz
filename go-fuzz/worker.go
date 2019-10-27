@@ -24,11 +24,6 @@ const (
 	syncPeriod = 3 * time.Second
 )
 
-type Stats struct {
-	execs    uint64
-	restarts uint64
-}
-
 type ROData struct {
 	corpus       []Input
 	corpusCover  []byte
@@ -154,7 +149,7 @@ func newWorker(c *Coordinator) {
 	}
 
 	c.mutator = newMutator()
-	c.coverBin = newTestBinary(coverBin, c.periodicCheck, &c.workerstats, uint8(fnidx))
+	c.coverBin = newTestBinary(coverBin, &c.execs, &c.restarts, uint8(fnidx))
 }
 
 func (w *Coordinator) workerLoop() {
@@ -450,18 +445,6 @@ func (w *Coordinator) noteCrasher(data, output []byte, hanged bool) {
 		Suppression: supp,
 		Hanging:     hanged,
 	})
-}
-
-func (w *Coordinator) periodicCheck() {
-	if shutdown.Err() != nil {
-		w.shutdown()
-		select {}
-	}
-	w.execs = w.workerstats.execs
-	if time.Since(w.lastSync) < syncPeriod {
-		return
-	}
-	w.lastSync = time.Now()
 }
 
 // shutdown cleanups after worker, it is not guaranteed to be called.

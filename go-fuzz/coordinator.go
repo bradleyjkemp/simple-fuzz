@@ -25,9 +25,9 @@ type Coordinator struct {
 	triageQueue  []CoordinatorInput
 	crasherQueue []NewCrasherArgs
 
-	lastSync    time.Time
-	workerstats Stats
-	execs       uint64
+	lastSync time.Time
+	execs    uint64
+	restarts uint64
 
 	corpus       *PersistentSet
 	suppressions *PersistentSet
@@ -65,20 +65,19 @@ func (c *Coordinator) broadcastStats() {
 	uptime := time.Since(c.startTime).Truncate(time.Second)
 	startTime := c.startTime
 	lastNewInputTime := c.lastInput
-	execs := c.workerstats.execs
 	cover := uint64(c.coverFullness)
 
 	var restartsDenom uint64
-	if c.workerstats.execs != 0 && c.workerstats.restarts != 0 {
-		restartsDenom = c.workerstats.execs / c.workerstats.restarts
+	if c.execs != 0 && c.restarts != 0 {
+		restartsDenom = c.execs / c.restarts
 	}
 
-	execsPerSec := float64(execs) * 1e9 / float64(time.Since(startTime))
+	execsPerSec := float64(c.execs) * 1e9 / float64(time.Since(startTime))
 	// log to stdout
 	log.Printf("corpus: %v (%v ago), crashers: %v,"+
 		" restarts: 1/%v, execs: %v (%.0f/sec), cover: %v, uptime: %v\n",
 		corpus, time.Since(lastNewInputTime).Truncate(time.Second),
-		crashers, restartsDenom, execs, execsPerSec, cover,
+		crashers, restartsDenom, c.execs, execsPerSec, cover,
 		uptime,
 	)
 }

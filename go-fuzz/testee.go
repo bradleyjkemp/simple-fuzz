@@ -40,10 +40,9 @@ type Testee struct {
 
 // TestBinary handles communication with and restring of testee subprocesses.
 type TestBinary struct {
-	fileName      string
-	commFile      string
-	comm          *Mapping
-	periodicCheck func()
+	fileName string
+	commFile string
+	comm     *Mapping
 
 	coverRegion []byte
 	inputRegion []byte
@@ -51,7 +50,8 @@ type TestBinary struct {
 	testee       *Testee
 	testeeBuffer []byte // reusable buffer for collecting testee output
 
-	stats *Stats
+	execs    *uint64
+	restarts *uint64
 
 	fnidx uint8
 }
@@ -67,7 +67,7 @@ func init() {
 // before we start to overwrite old output.
 const testeeBufferSize = 1 << 20
 
-func newTestBinary(fileName string, periodicCheck func(), stats *Stats, fnidx uint8) *TestBinary {
+func newTestBinary(fileName string, execs, restarts *uint64, fnidx uint8) *TestBinary {
 	comm, err := ioutil.TempFile("", "go-fuzz-comm")
 	if err != nil {
 		log.Fatalf("failed to create comm file: %v", err)
@@ -76,15 +76,15 @@ func newTestBinary(fileName string, periodicCheck func(), stats *Stats, fnidx ui
 	comm.Close()
 	mapping, mem := createMapping(comm.Name(), CoverSize+MaxInputSize)
 	return &TestBinary{
-		fileName:      fileName,
-		commFile:      comm.Name(),
-		comm:          mapping,
-		periodicCheck: periodicCheck,
-		coverRegion:   mem[:CoverSize],
-		inputRegion:   mem[CoverSize:],
-		stats:         stats,
-		fnidx:         fnidx,
-		testeeBuffer:  make([]byte, testeeBufferSize),
+		fileName:     fileName,
+		commFile:     comm.Name(),
+		comm:         mapping,
+		coverRegion:  mem[:CoverSize],
+		inputRegion:  mem[CoverSize:],
+		execs:        execs,
+		restarts:     restarts,
+		fnidx:        fnidx,
+		testeeBuffer: make([]byte, testeeBufferSize),
 	}
 }
 
@@ -102,13 +102,9 @@ func (bin *TestBinary) test(data []byte) (res int, ns uint64, cover, output []by
 		panic("input is too large")
 	}
 	for {
-		// This is the only function that is executed regularly,
-		// so we tie some periodic checks to it.
-		bin.periodicCheck()
-
-		bin.stats.execs++
+		*bin.execs++
 		if bin.testee == nil {
-			bin.stats.restarts++
+			*bin.restarts++
 			bin.testee = newTestee(bin.fileName, bin.comm, bin.coverRegion, bin.inputRegion, bin.fnidx, bin.testeeBuffer)
 		}
 		var retry bool
