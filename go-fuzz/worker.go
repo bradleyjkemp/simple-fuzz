@@ -183,15 +183,8 @@ func (w *Coordinator) workerLoop() {
 			continue
 		}
 
-		if len(w.ro.corpus) == 0 {
-			// Some other worker triages corpus inputs.
-			time.Sleep(100 * time.Millisecond)
-			continue
-		}
-
-		data, depth := w.mutator.generate(w.ro)
-
 		// Plain old blind fuzzing.
+		data, depth := w.mutator.generate(w.ro)
 		w.testInput(data, depth)
 	}
 	w.shutdown()
