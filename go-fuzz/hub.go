@@ -4,8 +4,6 @@
 package main
 
 import (
-	"sync"
-	"sync/atomic"
 	"time"
 
 	. "github.com/bradleyjkemp/simple-fuzz/go-fuzz-types"
@@ -25,11 +23,6 @@ const (
 type Hub struct {
 	id          int
 	coordinator *Coordinator
-
-	ro atomic.Value // *ROData
-
-	maxCoverMu sync.Mutex
-	maxCover   atomic.Value // []byte
 
 	initialTriage uint32
 
@@ -64,18 +57,11 @@ type Stats struct {
 // Preliminary cover update to prevent new input thundering herd.
 // This function is synchronous to reduce latency.
 func (hub *Coordinator) updateMaxCover(cover []byte) bool {
-	oldMaxCover := hub.maxCover.Load().([]byte)
-	if !compareCover(oldMaxCover, cover) {
+	if !compareCover(hub.maxCover, cover) {
 		return false
 	}
-	hub.maxCoverMu.Lock()
-	defer hub.maxCoverMu.Unlock()
-	oldMaxCover = hub.maxCover.Load().([]byte)
-	if !compareCover(oldMaxCover, cover) {
-		return false
-	}
-	maxCover := makeCopy(oldMaxCover)
+	maxCover := makeCopy(hub.maxCover)
 	updateMaxCover(maxCover, cover)
-	hub.maxCover.Store(maxCover)
+	hub.maxCover = maxCover
 	return true
 }

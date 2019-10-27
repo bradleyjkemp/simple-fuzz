@@ -138,7 +138,7 @@ func newWorker(c *Coordinator) {
 		coverBlocks[b.ID] = append(coverBlocks[b.ID], b)
 	}
 
-	c.maxCover.Store(make([]byte, CoverSize))
+	c.maxCover = make([]byte, CoverSize)
 
 	c.ro = &ROData{
 		corpusCover:  make([]byte, CoverSize),
@@ -164,7 +164,6 @@ func (w *Coordinator) workerLoop() {
 	for shutdown.Err() == nil {
 		if time.Since(lastStats) > syncPeriod {
 			lastStats = time.Now()
-			w.sync()
 			w.broadcastStats()
 		}
 		if len(w.crasherQueue) > 0 {

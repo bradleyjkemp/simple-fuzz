@@ -8,21 +8,15 @@ import (
 	"fmt"
 	"log"
 	"path/filepath"
-	"sync"
-	"sync/atomic"
 	"time"
 )
 
 // Coordinator manages persistent fuzzer state like input corpus and crashers.
 type Coordinator struct {
-	mu sync.Mutex
+	ro       *ROData
+	maxCover []byte
 
-	ro *ROData
-
-	maxCoverMu sync.Mutex
-	maxCover   atomic.Value // []byte
-
-	corpusSigs  map[Sig]struct{}
+	corpusSigs map[Sig]struct{}
 
 	corpusOrigins [execCount]uint64
 	mutator       *Mutator
@@ -67,8 +61,6 @@ func coordinatorMain() {
 }
 
 func (c *Coordinator) broadcastStats() {
-	c.mu.Lock()
-	defer c.mu.Unlock()
 	corpus := uint64(len(c.corpus.m))
 	crashers := uint64(len(c.crashers.m))
 	uptime := time.Since(c.startTime).Truncate(time.Second)
@@ -108,9 +100,6 @@ type NewInputArgs struct {
 
 // NewInput saves new interesting input on coordinator.
 func (c *Coordinator) NewInput(a *NewInputArgs, r *int) error {
-	c.mu.Lock()
-	defer c.mu.Unlock()
-
 	art := Artifact{a.Data, a.Prio, false}
 	if !c.corpus.add(art) {
 		return nil
@@ -130,9 +119,6 @@ type NewCrasherArgs struct {
 
 // NewCrasher saves new crasher input on coordinator.
 func (c *Coordinator) NewCrasher(a NewCrasherArgs) {
-	c.mu.Lock()
-	defer c.mu.Unlock()
-
 	if !*flagDup && !c.suppressions.add(Artifact{a.Suppression, 0, false}) {
 		return // Already have this.
 	}
@@ -155,21 +141,4 @@ func (c *Coordinator) NewCrasher(a NewCrasherArgs) {
 	}
 	c.crashers.addDescription(a.Data, buf.Bytes(), "quoted")
 	c.crashers.addDescription(a.Data, a.Error, "output")
-}
-
-// Sync is a periodic sync with a worker.
-// Worker sends statistics. Coordinator returns new inputs.
-func (c *Coordinator) sync() {
-	c.mu.Lock()
-	defer c.mu.Unlock()
-
-	// Sync with the coordinator.
-	if *flagV >= 1 {
-		log.Printf("hub: corpus=%v bootstrap=%v fuzz=%v minimize=%v versifier=%v smash=%v sonar=%v",
-			len(c.ro.corpus), c.corpusOrigins[execBootstrap]+c.corpusOrigins[execCorpus],
-			c.corpusOrigins[execFuzz]+c.corpusOrigins[execSonar],
-			c.corpusOrigins[execMinimizeInput]+c.corpusOrigins[execMinimizeCrasher],
-			c.corpusOrigins[execVersifier], c.corpusOrigins[execSmash],
-			c.corpusOrigins[execSonarHint])
-	}
 }
