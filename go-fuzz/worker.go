@@ -24,24 +24,6 @@ const (
 	syncPeriod = 3 * time.Second
 )
 
-type execType byte
-
-//go:generate stringer -type execType -trimprefix exec
-const (
-	execBootstrap execType = iota
-	execCorpus
-	execMinimizeInput
-	execMinimizeCrasher
-	execTriageInput
-	execFuzz
-	execVersifier
-	execSmash
-	execSonar
-	execSonarHint
-	execTotal
-	execCount
-)
-
 type Stats struct {
 	execs    uint64
 	restarts uint64
@@ -64,7 +46,6 @@ type Input struct {
 	coverSize int
 	res       int
 	depth     int
-	typ       execType
 	execTime  uint64
 	favored   bool
 }
@@ -216,7 +197,7 @@ func (w *Coordinator) workerLoop() {
 		data, depth := w.mutator.generate(w.ro)
 
 		// Plain old blind fuzzing.
-		w.testInput(data, depth, execFuzz)
+		w.testInput(data, depth)
 	}
 	w.shutdown()
 }
@@ -231,12 +212,11 @@ func (w *Coordinator) triageInput(input CoordinatorInput) {
 	inp := Input{
 		data:     input.Data,
 		depth:    int(input.Prio),
-		typ:      input.Type,
 		execTime: 1 << 60,
 	}
 	// Calculate min exec time, min coverage and max result of 3 runs.
 	for i := 0; i < 3; i++ {
-		w.execs[execTriageInput]++
+		w.execs++
 		res, ns, cover, output, crashed, hanged := w.coverBin.test(inp.data)
 		if crashed {
 			// Inputs in corpus should not crash.
@@ -276,7 +256,7 @@ func (w *Coordinator) triageInput(input CoordinatorInput) {
 				return false
 			}
 			if inp.res != res || worseCover(newCover, cover) {
-				w.noteNewInput(candidate, cover, res, inp.depth+1, execMinimizeInput)
+				w.noteNewInput(candidate, cover, res, inp.depth+1)
 				return false
 			}
 			return true
@@ -310,7 +290,6 @@ func (w *Coordinator) triageInput(input CoordinatorInput) {
 	if w.coverFullness < corpusCoverSize {
 		w.coverFullness = corpusCoverSize
 	}
-	w.corpusOrigins[inp.typ]++
 
 	if inp.mine {
 		if err := w.NewInput(&NewInputArgs{inp.data, uint64(inp.depth)}, nil); err != nil {
@@ -356,10 +335,6 @@ func (w *Coordinator) minimizeInput(data []byte, canonicalize bool, pred func(ca
 	res := make([]byte, len(data))
 	copy(res, data)
 	start := time.Now()
-	stat := &w.execs[execMinimizeInput]
-	if canonicalize {
-		stat = &w.execs[execMinimizeCrasher]
-	}
 
 	// First, try to cut tail.
 	for n := 1024; n != 0; n /= 2 {
@@ -368,7 +343,7 @@ func (w *Coordinator) minimizeInput(data []byte, canonicalize bool, pred func(ca
 				return res
 			}
 			candidate := res[:len(res)-n]
-			*stat++
+			w.execs++
 			result, _, cover, output, crashed, hanged := w.coverBin.test(candidate)
 			if !pred(candidate, cover, output, result, crashed, hanged) {
 				break
@@ -386,7 +361,7 @@ func (w *Coordinator) minimizeInput(data []byte, canonicalize bool, pred func(ca
 		candidate := tmp[:len(res)-1]
 		copy(candidate[:i], res[:i])
 		copy(candidate[i:], res[i+1:])
-		*stat++
+		w.execs++
 		result, _, cover, output, crashed, hanged := w.coverBin.test(candidate)
 		if !pred(candidate, cover, output, result, crashed, hanged) {
 			continue
@@ -404,7 +379,7 @@ func (w *Coordinator) minimizeInput(data []byte, canonicalize bool, pred func(ca
 			}
 			candidate := tmp[:len(res)-j+i]
 			copy(candidate[i:], res[j:])
-			*stat++
+			w.execs++
 			result, _, cover, output, crashed, hanged := w.coverBin.test(candidate)
 			if !pred(candidate, cover, output, result, crashed, hanged) {
 				continue
@@ -426,7 +401,7 @@ func (w *Coordinator) minimizeInput(data []byte, canonicalize bool, pred func(ca
 			candidate := tmp[:len(res)]
 			copy(candidate, res)
 			candidate[i] = '0'
-			*stat++
+			w.execs++
 			result, _, cover, output, crashed, hanged := w.coverBin.test(candidate)
 			if !pred(candidate, cover, output, result, crashed, hanged) {
 				continue
@@ -438,30 +413,29 @@ func (w *Coordinator) minimizeInput(data []byte, canonicalize bool, pred func(ca
 	return res
 }
 
-func (w *Coordinator) testInput(data []byte, depth int, typ execType) {
-	w.testInputImpl(w.coverBin, data, depth, typ)
+func (w *Coordinator) testInput(data []byte, depth int) {
+	w.testInputImpl(w.coverBin, data, depth)
 }
 
-func (w *Coordinator) testInputImpl(bin *TestBinary, data []byte, depth int, typ execType) {
+func (w *Coordinator) testInputImpl(bin *TestBinary, data []byte, depth int) {
 	if _, ok := w.ro.badInputs[hash(data)]; ok {
 		return // no, thanks
 	}
-	w.execs[typ]++
 	res, _, cover, output, crashed, hanged := bin.test(data)
 	if crashed {
 		w.noteCrasher(data, output, hanged)
 		return
 	}
-	w.noteNewInput(data, cover, res, depth, typ)
+	w.noteNewInput(data, cover, res, depth)
 }
 
-func (w *Coordinator) noteNewInput(data, cover []byte, res, depth int, typ execType) {
+func (w *Coordinator) noteNewInput(data, cover []byte, res, depth int) {
 	if res < 0 {
 		// User said to not add this input to corpus.
 		return
 	}
 	if w.updateMaxCover(cover) {
-		w.triageQueue = append(w.triageQueue, CoordinatorInput{makeCopy(data), uint64(depth), typ, false, false})
+		w.triageQueue = append(w.triageQueue, CoordinatorInput{makeCopy(data), uint64(depth), false, false})
 	}
 }
 
@@ -483,18 +457,11 @@ func (w *Coordinator) periodicCheck() {
 		w.shutdown()
 		select {}
 	}
-	w.execs[execTotal] = w.workerstats.execs
+	w.execs = w.workerstats.execs
 	if time.Since(w.lastSync) < syncPeriod {
 		return
 	}
 	w.lastSync = time.Now()
-	if *flagV >= 2 {
-		log.Printf("worker triageq=%v execs=%v mininp=%v mincrash=%v triage=%v fuzz=%v versifier=%v smash=%v sonar=%v hint=%v",
-			len(w.triageQueue),
-			w.execs[execTotal], w.execs[execMinimizeInput], w.execs[execMinimizeCrasher],
-			w.execs[execTriageInput], w.execs[execFuzz], w.execs[execVersifier], w.execs[execSmash],
-			w.execs[execSonar], w.execs[execSonarHint])
-	}
 }
 
 // shutdown cleanups after worker, it is not guaranteed to be called.

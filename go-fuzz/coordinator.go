@@ -18,8 +18,7 @@ type Coordinator struct {
 
 	corpusSigs map[Sig]struct{}
 
-	corpusOrigins [execCount]uint64
-	mutator       *Mutator
+	mutator *Mutator
 
 	coverBin *TestBinary
 
@@ -28,7 +27,7 @@ type Coordinator struct {
 
 	lastSync    time.Time
 	workerstats Stats
-	execs       [execCount]uint64
+	execs       uint64
 
 	corpus       *PersistentSet
 	suppressions *PersistentSet
@@ -54,7 +53,7 @@ func coordinatorMain() {
 	newWorker(c)
 	// Give the worker initial corpus.
 	for _, a := range c.corpus.m {
-		c.triageQueue = append(c.triageQueue, CoordinatorInput{a.data, a.meta, execCorpus, !a.user, true})
+		c.triageQueue = append(c.triageQueue, CoordinatorInput{a.data, a.meta, !a.user, true})
 	}
 
 	go c.workerLoop()
@@ -88,7 +87,6 @@ func (c *Coordinator) broadcastStats() {
 type CoordinatorInput struct {
 	Data      []byte
 	Prio      uint64
-	Type      execType
 	Minimized bool
 	Smashed   bool
 }
@@ -105,7 +103,7 @@ func (c *Coordinator) NewInput(a *NewInputArgs, r *int) error {
 		return nil
 	}
 	c.lastInput = time.Now()
-	c.triageQueue = append(c.triageQueue, CoordinatorInput{a.Data, a.Prio, execCorpus, true, false})
+	c.triageQueue = append(c.triageQueue, CoordinatorInput{a.Data, a.Prio, true, false})
 
 	return nil
 }
