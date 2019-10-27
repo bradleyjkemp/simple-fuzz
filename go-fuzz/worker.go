@@ -20,6 +20,10 @@ import (
 	. "github.com/bradleyjkemp/simple-fuzz/go-fuzz-types"
 )
 
+const (
+	syncPeriod = 3 * time.Second
+)
+
 type execType byte
 
 //go:generate stringer -type execType -trimprefix exec
@@ -38,18 +42,31 @@ const (
 	execCount
 )
 
+type Stats struct {
+	execs    uint64
+	restarts uint64
+}
+
+type ROData struct {
+	corpus       []Input
+	corpusCover  []byte
+	badInputs    map[Sig]struct{}
+	suppressions map[Sig]struct{}
+	strLits      [][]byte // string literals in testee
+	intLits      [][]byte // int literals in testee
+	coverBlocks  map[int][]CoverBlock
+}
+
 type Input struct {
-	mine            bool
-	data            []byte
-	cover           []byte
-	coverSize       int
-	res             int
-	depth           int
-	typ             execType
-	execTime        uint64
-	favored         bool
-	score           int
-	runningScoreSum int
+	mine      bool
+	data      []byte
+	cover     []byte
+	coverSize int
+	res       int
+	depth     int
+	typ       execType
+	execTime  uint64
+	favored   bool
 }
 
 func newWorker(c *Coordinator) {
@@ -286,13 +303,6 @@ func (w *Coordinator) triageInput(input CoordinatorInput) {
 		log.Printf("hub received new input [%v]%v mine=%v", len(inp.data), hash(inp.data), inp.mine)
 	}
 	w.corpusSigs[sig] = struct{}{}
-	// Assign it the default score, but mark corpus for score recalculation.
-	scoreSum := 0
-	if len(w.ro.corpus) > 0 {
-		scoreSum = w.ro.corpus[len(w.ro.corpus)-1].runningScoreSum
-	}
-	inp.score = defScore
-	inp.runningScoreSum = scoreSum + defScore
 	w.ro.corpus = append(w.ro.corpus, inp)
 	w.updateMaxCover(inp.cover)
 	w.ro.corpusCover = makeCopy(w.ro.corpusCover)
@@ -537,4 +547,14 @@ func extractSuppression(out []byte) []byte {
 		supp = out
 	}
 	return supp
+}
+
+func (hub *Coordinator) updateMaxCover(cover []byte) bool {
+	if !compareCover(hub.maxCover, cover) {
+		return false
+	}
+	maxCover := makeCopy(hub.maxCover)
+	updateMaxCover(maxCover, cover)
+	hub.maxCover = maxCover
+	return true
 }
