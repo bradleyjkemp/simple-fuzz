@@ -11,7 +11,6 @@ import (
 	"log"
 	"os"
 	"path/filepath"
-	"strconv"
 )
 
 // PersistentSet is a set of binary blobs with a persistent mirror on disk.
@@ -22,8 +21,7 @@ type PersistentSet struct {
 
 type Artifact struct {
 	data []byte
-	meta uint64 // arbitrary user payload
-	user bool   // file created by user
+	user bool // file created by user
 }
 
 type Sig [sha1.Size]byte
@@ -65,21 +63,15 @@ func (ps *PersistentSet) readInDir(dir string) {
 		if len(name) > hexLen+1 && isHexString(name[:hexLen]) && name[hexLen] == '.' {
 			return nil // description file
 		}
-		var meta uint64
-		if len(name) > hexLen+1 && isHexString(name[:hexLen]) && name[hexLen] == '-' {
-			meta, _ = strconv.ParseUint(name[2*sha1.Size+1:], 10, 64)
-		}
-		a := Artifact{data, meta, len(name) < hexLen || !isHexString(name[:hexLen])}
+
+		a := Artifact{data, len(name) < hexLen || !isHexString(name[:hexLen])}
 		ps.m[sig] = a
 		return nil
 	})
 }
 
-func persistentFilename(dir string, a Artifact, sig Sig) string {
+func persistentFilename(dir string, sig Sig) string {
 	fname := filepath.Join(dir, hex.EncodeToString(sig[:]))
-	if a.meta != 0 {
-		fname += fmt.Sprintf("-%v", a.meta)
-	}
 	return fname
 }
 
@@ -99,7 +91,7 @@ func (ps *PersistentSet) add(a Artifact) bool {
 		return false
 	}
 	ps.m[sig] = a
-	fname := persistentFilename(ps.dir, a, sig)
+	fname := persistentFilename(ps.dir, sig)
 	if err := ioutil.WriteFile(fname, a.data, 0660); err != nil {
 		log.Printf("failed to write file: %v", err)
 	}

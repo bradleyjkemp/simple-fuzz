@@ -46,10 +46,10 @@ func (m *Mutator) randByteOrder() binary.ByteOrder {
 	return binary.BigEndian
 }
 
-func (m *Mutator) generate(ro *ROData) ([]byte, int) {
+func (m *Mutator) generate(ro *ROData) []byte {
 	corpus := ro.corpus
 	input := &corpus[m.rand(len(corpus))]
-	return m.mutate(input.data, ro), input.depth + 1
+	return m.mutate(input.data, ro)
 }
 
 func (m *Mutator) mutate(data []byte, ro *ROData) []byte {

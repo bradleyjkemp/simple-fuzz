@@ -40,9 +40,6 @@ type Input struct {
 	cover     []byte
 	coverSize int
 	res       int
-	depth     int
-	execTime  uint64
-	favored   bool
 }
 
 func newWorker(c *Coordinator) {
@@ -184,8 +181,8 @@ func (w *Coordinator) workerLoop() {
 		}
 
 		// Plain old blind fuzzing.
-		data, depth := w.mutator.generate(w.ro)
-		w.testInput(data, depth)
+		data := w.mutator.generate(w.ro)
+		w.testInput(data)
 	}
 	w.shutdown()
 }
@@ -198,14 +195,12 @@ func (w *Coordinator) triageInput(input CoordinatorInput) {
 		input.Data = input.Data[:MaxInputSize]
 	}
 	inp := Input{
-		data:     input.Data,
-		depth:    int(input.Prio),
-		execTime: 1 << 60,
+		data: input.Data,
 	}
 	// Calculate min exec time, min coverage and max result of 3 runs.
 	for i := 0; i < 3; i++ {
 		w.execs++
-		res, ns, cover, output, crashed, hanged := w.coverBin.test(inp.data)
+		res, cover, output, crashed, hanged := w.coverBin.test(inp.data)
 		if crashed {
 			// Inputs in corpus should not crash.
 			w.noteCrasher(inp.data, output, hanged)
@@ -225,9 +220,6 @@ func (w *Coordinator) triageInput(input CoordinatorInput) {
 		if inp.res < res {
 			inp.res = res
 		}
-		if inp.execTime > ns {
-			inp.execTime = ns
-		}
 	}
 	if !input.Minimized {
 		inp.mine = true
@@ -244,7 +236,7 @@ func (w *Coordinator) triageInput(input CoordinatorInput) {
 				return false
 			}
 			if inp.res != res || worseCover(newCover, cover) {
-				w.noteNewInput(candidate, cover, res, inp.depth+1)
+				w.noteNewInput(candidate, cover, res)
 				return false
 			}
 			return true
@@ -280,7 +272,7 @@ func (w *Coordinator) triageInput(input CoordinatorInput) {
 	}
 
 	if inp.mine {
-		if err := w.NewInput(&NewInputArgs{inp.data, uint64(inp.depth)}, nil); err != nil {
+		if err := w.NewInput(&NewInputArgs{inp.data}, nil); err != nil {
 			log.Printf("failed to connect to coordinator: %v, killing worker", err)
 			return
 		}
@@ -332,7 +324,7 @@ func (w *Coordinator) minimizeInput(data []byte, canonicalize bool, pred func(ca
 			}
 			candidate := res[:len(res)-n]
 			w.execs++
-			result, _, cover, output, crashed, hanged := w.coverBin.test(candidate)
+			result, cover, output, crashed, hanged := w.coverBin.test(candidate)
 			if !pred(candidate, cover, output, result, crashed, hanged) {
 				break
 			}
@@ -350,7 +342,7 @@ func (w *Coordinator) minimizeInput(data []byte, canonicalize bool, pred func(ca
 		copy(candidate[:i], res[:i])
 		copy(candidate[i:], res[i+1:])
 		w.execs++
-		result, _, cover, output, crashed, hanged := w.coverBin.test(candidate)
+		result, cover, output, crashed, hanged := w.coverBin.test(candidate)
 		if !pred(candidate, cover, output, result, crashed, hanged) {
 			continue
 		}
@@ -368,7 +360,7 @@ func (w *Coordinator) minimizeInput(data []byte, canonicalize bool, pred func(ca
 			candidate := tmp[:len(res)-j+i]
 			copy(candidate[i:], res[j:])
 			w.execs++
-			result, _, cover, output, crashed, hanged := w.coverBin.test(candidate)
+			result, cover, output, crashed, hanged := w.coverBin.test(candidate)
 			if !pred(candidate, cover, output, result, crashed, hanged) {
 				continue
 			}
@@ -390,7 +382,7 @@ func (w *Coordinator) minimizeInput(data []byte, canonicalize bool, pred func(ca
 			copy(candidate, res)
 			candidate[i] = '0'
 			w.execs++
-			result, _, cover, output, crashed, hanged := w.coverBin.test(candidate)
+			result, cover, output, crashed, hanged := w.coverBin.test(candidate)
 			if !pred(candidate, cover, output, result, crashed, hanged) {
 				continue
 			}
@@ -401,29 +393,29 @@ func (w *Coordinator) minimizeInput(data []byte, canonicalize bool, pred func(ca
 	return res
 }
 
-func (w *Coordinator) testInput(data []byte, depth int) {
-	w.testInputImpl(w.coverBin, data, depth)
+func (w *Coordinator) testInput(data []byte) {
+	w.testInputImpl(w.coverBin, data)
 }
 
-func (w *Coordinator) testInputImpl(bin *TestBinary, data []byte, depth int) {
+func (w *Coordinator) testInputImpl(bin *TestBinary, data []byte) {
 	if _, ok := w.ro.badInputs[hash(data)]; ok {
 		return // no, thanks
 	}
-	res, _, cover, output, crashed, hanged := bin.test(data)
+	res, cover, output, crashed, hanged := bin.test(data)
 	if crashed {
 		w.noteCrasher(data, output, hanged)
 		return
 	}
-	w.noteNewInput(data, cover, res, depth)
+	w.noteNewInput(data, cover, res)
 }
 
-func (w *Coordinator) noteNewInput(data, cover []byte, res, depth int) {
+func (w *Coordinator) noteNewInput(data, cover []byte, res int) {
 	if res < 0 {
 		// User said to not add this input to corpus.
 		return
 	}
 	if w.updateMaxCover(cover) {
-		w.triageQueue = append(w.triageQueue, CoordinatorInput{makeCopy(data), uint64(depth), false, false})
+		w.triageQueue = append(w.triageQueue, CoordinatorInput{makeCopy(data), false, false})
 	}
 }
 

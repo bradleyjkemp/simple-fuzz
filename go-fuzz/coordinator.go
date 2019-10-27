@@ -47,13 +47,13 @@ func coordinatorMain() {
 	c.crashers = newPersistentSet(filepath.Join(*flagWorkdir, "crashers"))
 	c.corpus = newPersistentSet(filepath.Join(*flagWorkdir, "corpus"))
 	if len(c.corpus.m) == 0 {
-		c.corpus.add(Artifact{[]byte{}, 0, false})
+		c.corpus.add(Artifact{[]byte{}, false})
 	}
 
 	newWorker(c)
 	// Give the worker initial corpus.
 	for _, a := range c.corpus.m {
-		c.triageQueue = append(c.triageQueue, CoordinatorInput{a.data, a.meta, !a.user, true})
+		c.triageQueue = append(c.triageQueue, CoordinatorInput{a.data, !a.user, true})
 	}
 
 	go c.workerLoop()
@@ -85,24 +85,22 @@ func (c *Coordinator) broadcastStats() {
 // CoordinatorInput is description of input that is passed between coordinator and worker.
 type CoordinatorInput struct {
 	Data      []byte
-	Prio      uint64
 	Minimized bool
 	Smashed   bool
 }
 
 type NewInputArgs struct {
 	Data []byte
-	Prio uint64
 }
 
 // NewInput saves new interesting input on coordinator.
 func (c *Coordinator) NewInput(a *NewInputArgs, r *int) error {
-	art := Artifact{a.Data, a.Prio, false}
+	art := Artifact{a.Data, false}
 	if !c.corpus.add(art) {
 		return nil
 	}
 	c.lastInput = time.Now()
-	c.triageQueue = append(c.triageQueue, CoordinatorInput{a.Data, a.Prio, true, false})
+	c.triageQueue = append(c.triageQueue, CoordinatorInput{a.Data, true, false})
 
 	return nil
 }
@@ -116,10 +114,10 @@ type NewCrasherArgs struct {
 
 // NewCrasher saves new crasher input on coordinator.
 func (c *Coordinator) NewCrasher(a NewCrasherArgs) {
-	if !*flagDup && !c.suppressions.add(Artifact{a.Suppression, 0, false}) {
+	if !*flagDup && !c.suppressions.add(Artifact{a.Suppression, false}) {
 		return // Already have this.
 	}
-	if !c.crashers.add(Artifact{a.Data, 0, false}) {
+	if !c.crashers.add(Artifact{a.Data, false}) {
 		return // Already have this.
 	}
 

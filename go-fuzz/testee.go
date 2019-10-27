@@ -97,7 +97,7 @@ func (bin *TestBinary) close() {
 	os.Remove(bin.commFile)
 }
 
-func (bin *TestBinary) test(data []byte) (res int, ns uint64, cover, output []byte, crashed, hanged bool) {
+func (bin *TestBinary) test(data []byte) (res int, cover, output []byte, crashed, hanged bool) {
 	if len(data) > MaxInputSize {
 		panic("input is too large")
 	}
@@ -108,7 +108,7 @@ func (bin *TestBinary) test(data []byte) (res int, ns uint64, cover, output []by
 			bin.testee = newTestee(bin.fileName, bin.comm, bin.coverRegion, bin.inputRegion, bin.fnidx, bin.testeeBuffer)
 		}
 		var retry bool
-		res, ns, cover, crashed, hanged, retry = bin.testee.test(data)
+		res, cover, crashed, hanged, retry = bin.testee.test(data)
 		if retry {
 			bin.testee.shutdown()
 			bin.testee = nil
@@ -247,7 +247,7 @@ retry:
 }
 
 // test passes data for testing.
-func (t *Testee) test(data []byte) (res int, ns uint64, cover []byte, crashed, hanged, retry bool) {
+func (t *Testee) test(data []byte) (res int, cover []byte, crashed, hanged, retry bool) {
 	if t.down {
 		log.Fatalf("cannot test: testee is already shutdown")
 	}
@@ -291,7 +291,6 @@ func (t *Testee) test(data []byte) (res int, ns uint64, cover []byte, crashed, h
 		return
 	}
 	res = int(r.Res)
-	ns = r.Ns
 	cover = t.coverRegion
 	return
 }
