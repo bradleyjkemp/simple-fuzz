@@ -31,7 +31,6 @@ type ROData struct {
 	suppressions map[Sig]struct{}
 	strLits      [][]byte // string literals in testee
 	intLits      [][]byte // int literals in testee
-	coverBlocks  map[int][]CoverBlock
 }
 
 type Input struct {
@@ -123,18 +122,12 @@ func newWorker(c *Coordinator) {
 
 	c.corpusSigs = make(map[Sig]struct{})
 
-	coverBlocks := make(map[int][]CoverBlock)
-	for _, b := range metadata.Blocks {
-		coverBlocks[b.ID] = append(coverBlocks[b.ID], b)
-	}
-
 	c.maxCover = make([]byte, CoverSize)
 
 	c.ro = &ROData{
 		corpusCover:  make([]byte, CoverSize),
 		badInputs:    make(map[Sig]struct{}),
 		suppressions: make(map[Sig]struct{}),
-		coverBlocks:  coverBlocks,
 	}
 	// Prepare list of string and integer literals.
 	for _, lit := range metadata.Literals {
