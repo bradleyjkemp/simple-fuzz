@@ -13,8 +13,12 @@ import (
 
 // Coordinator manages persistent fuzzer state like input corpus and crashers.
 type Coordinator struct {
-	ro       *ROData
-	maxCover []byte
+	corpusInputs   []Input
+	badInputs      map[Sig]struct{}
+	suppressedSigs map[Sig]struct{}
+	strLits        [][]byte // string literals in testee
+	intLits        [][]byte // int literals in testee
+	maxCover       []byte
 
 	corpusSigs map[Sig]struct{}
 
@@ -40,12 +44,16 @@ type Coordinator struct {
 
 // coordinatorMain is entry function for coordinator.
 func coordinatorMain() {
-	c := &Coordinator{}
-	c.startTime = time.Now()
-	c.lastInput = time.Now()
-	c.suppressions = newPersistentSet(filepath.Join(*flagWorkdir, "suppressions"))
-	c.crashers = newPersistentSet(filepath.Join(*flagWorkdir, "crashers"))
-	c.corpus = newPersistentSet(filepath.Join(*flagWorkdir, "corpus"))
+	c := &Coordinator{
+		startTime:      time.Now(),
+		lastInput:      time.Now(),
+		suppressions:   newPersistentSet(filepath.Join(*flagWorkdir, "suppressions")),
+		crashers:       newPersistentSet(filepath.Join(*flagWorkdir, "crashers")),
+		corpus:         newPersistentSet(filepath.Join(*flagWorkdir, "corpus")),
+		badInputs:      make(map[Sig]struct{}),
+		suppressedSigs: make(map[Sig]struct{}),
+	}
+
 	if len(c.corpus.m) == 0 {
 		c.corpus.add(Artifact{[]byte{}, false})
 	}

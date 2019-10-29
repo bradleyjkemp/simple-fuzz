@@ -46,14 +46,8 @@ func (m *Mutator) randByteOrder() binary.ByteOrder {
 	return binary.BigEndian
 }
 
-func (m *Mutator) generate(ro *ROData) []byte {
-	corpus := ro.corpus
-	input := &corpus[m.rand(len(corpus))]
-	return m.mutate(input.data, ro)
-}
-
-func (m *Mutator) mutate(data []byte, ro *ROData) []byte {
-	corpus := ro.corpus
+func (m *Mutator) generate(corpus []Input, intLits, strLits [][]byte) []byte {
+	data := corpus[m.rand(len(corpus))].data
 	res := make([]byte, len(data))
 	copy(res, data)
 	nm := 1 + m.Exp2()
@@ -351,15 +345,15 @@ func (m *Mutator) mutate(data []byte, ro *ROData) []byte {
 		case 18:
 			// Insert a literal.
 			// TODO: encode int literals in big-endian, base-128, etc.
-			if len(ro.intLits) == 0 && len(ro.strLits) == 0 {
+			if len(intLits) == 0 && len(strLits) == 0 {
 				iter--
 				continue
 			}
 			var lit []byte
-			if len(ro.strLits) != 0 && m.bool() {
-				lit = []byte(ro.strLits[m.rand(len(ro.strLits))])
+			if len(strLits) != 0 && m.bool() {
+				lit = []byte(strLits[m.rand(len(strLits))])
 			} else {
-				lit = ro.intLits[m.rand(len(ro.intLits))]
+				lit = intLits[m.rand(len(intLits))]
 				if m.rand(3) == 0 {
 					lit = reverse(lit)
 				}
@@ -372,15 +366,15 @@ func (m *Mutator) mutate(data []byte, ro *ROData) []byte {
 			copy(res[pos:], lit)
 		case 19:
 			// Replace with literal.
-			if len(ro.intLits) == 0 && len(ro.strLits) == 0 {
+			if len(intLits) == 0 && len(strLits) == 0 {
 				iter--
 				continue
 			}
 			var lit []byte
-			if len(ro.strLits) != 0 && m.bool() {
-				lit = []byte(ro.strLits[m.rand(len(ro.strLits))])
+			if len(strLits) != 0 && m.bool() {
+				lit = []byte(strLits[m.rand(len(strLits))])
 			} else {
-				lit = ro.intLits[m.rand(len(ro.intLits))]
+				lit = intLits[m.rand(len(intLits))]
 				if m.rand(3) == 0 {
 					lit = reverse(lit)
 				}
