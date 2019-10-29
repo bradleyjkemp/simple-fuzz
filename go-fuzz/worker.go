@@ -369,14 +369,10 @@ func (w *Coordinator) minimizeInput(data []byte, canonicalize bool, pred func(ca
 }
 
 func (w *Coordinator) testInput(data []byte) {
-	w.testInputImpl(w.coverBin, data)
-}
-
-func (w *Coordinator) testInputImpl(bin *TestBinary, data []byte) {
 	if _, ok := w.badInputs[hash(data)]; ok {
 		return // no, thanks
 	}
-	res, cover, output, crashed, hanged := bin.test(data)
+	res, cover, output, crashed, hanged := w.coverBin.test(data)
 	if crashed {
 		w.noteCrasher(data, output, hanged)
 		return
