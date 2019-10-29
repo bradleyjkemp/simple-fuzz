@@ -138,12 +138,14 @@ func newWorker(c *Coordinator) {
 }
 
 func (w *Coordinator) workerLoop() {
-	var lastStats time.Time
-	for shutdown.Err() == nil {
-		if time.Since(lastStats) > syncPeriod {
-			lastStats = time.Now()
+	go func() {
+		t := time.Tick(syncPeriod)
+		for {
+			<-t
 			w.broadcastStats()
 		}
+	}()
+	for shutdown.Err() == nil {
 		if len(w.crasherQueue) > 0 {
 			n := len(w.crasherQueue) - 1
 			crash := w.crasherQueue[n]
