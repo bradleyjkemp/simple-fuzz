@@ -182,33 +182,22 @@ func (w *Coordinator) triageInput(input CoordinatorInput) {
 	if len(input.Data) > MaxInputSize {
 		input.Data = input.Data[:MaxInputSize]
 	}
+
+	w.execs++
+	res, cover, output, crashed, hanged := w.coverBin.test(input.Data)
+	if crashed {
+		// Inputs in corpus should not crash.
+		w.noteCrasher(input.Data, output, hanged)
+		return
+	}
+
 	inp := Input{
-		data: input.Data,
+		data:  input.Data,
+		cover: make([]byte, CoverSize),
+		res:   res,
 	}
-	// Calculate min exec time, min coverage and max result of 3 runs.
-	for i := 0; i < 3; i++ {
-		w.execs++
-		res, cover, output, crashed, hanged := w.coverBin.test(inp.data)
-		if crashed {
-			// Inputs in corpus should not crash.
-			w.noteCrasher(inp.data, output, hanged)
-			return
-		}
-		if inp.cover == nil {
-			inp.cover = make([]byte, CoverSize)
-			copy(inp.cover, cover)
-		} else {
-			for i, v := range cover {
-				x := inp.cover[i]
-				if v > x {
-					inp.cover[i] = v
-				}
-			}
-		}
-		if inp.res < res {
-			inp.res = res
-		}
-	}
+	copy(inp.cover, cover) // cover is shared memory so needs to be copied
+
 	if !input.Minimized {
 		inp.mine = true
 		// When minimizing new inputs we don't pursue exactly the same coverage,
