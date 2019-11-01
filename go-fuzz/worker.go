@@ -248,12 +248,13 @@ func (w *Coordinator) triageInput(input CoordinatorInput) {
 		w.coverFullness = corpusCoverSize
 	}
 
-	if inp.mine {
-		if err := w.NewInput(&NewInputArgs{inp.data}, nil); err != nil {
-			log.Printf("failed to connect to coordinator: %v, killing worker", err)
-			return
-		}
+	art := Artifact{inp.data, false}
+	if !w.corpus.add(art) {
+		// already have this
+		return
 	}
+	w.lastInput = time.Now()
+	w.triageQueue = append(w.triageQueue, CoordinatorInput{inp.data, true, false})
 }
 
 // processCrasher minimizes new crashers and sends them to the hub.

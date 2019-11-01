@@ -97,18 +97,14 @@ type CoordinatorInput struct {
 	Smashed   bool
 }
 
-type NewInputArgs struct {
-	Data []byte
-}
-
 // NewInput saves new interesting input on coordinator.
-func (c *Coordinator) NewInput(a *NewInputArgs, r *int) error {
-	art := Artifact{a.Data, false}
+func (c *Coordinator) NewInput(data []byte, r *int) error {
+	art := Artifact{data, false}
 	if !c.corpus.add(art) {
 		return nil
 	}
 	c.lastInput = time.Now()
-	c.triageQueue = append(c.triageQueue, CoordinatorInput{a.Data, true, false})
+	c.triageQueue = append(c.triageQueue, CoordinatorInput{data, true, false})
 
 	return nil
 }
