@@ -26,7 +26,7 @@ type Coordinator struct {
 
 	coverBin *TestBinary
 
-	triageQueue  []CoordinatorInput
+	triageQueue  []Input
 	crasherQueue []NewCrasherArgs
 
 	lastSync time.Time
@@ -61,7 +61,7 @@ func coordinatorMain() {
 	newWorker(c)
 	// Give the worker initial corpus.
 	for _, a := range c.corpus.m {
-		c.triageQueue = append(c.triageQueue, CoordinatorInput{a.data, !a.user, true})
+		c.triageQueue = append(c.triageQueue, Input{data: a.data, minimized: !a.user})
 	}
 
 	go c.workerLoop()
@@ -104,7 +104,7 @@ func (c *Coordinator) NewInput(data []byte, r *int) error {
 		return nil
 	}
 	c.lastInput = time.Now()
-	c.triageQueue = append(c.triageQueue, CoordinatorInput{data, true, false})
+	c.triageQueue = append(c.triageQueue, Input{data: data, minimized: true})
 
 	return nil
 }

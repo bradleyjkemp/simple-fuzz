@@ -25,10 +25,9 @@ const (
 )
 
 type Input struct {
-	mine      bool
+	minimized bool
 	data      []byte
 	cover     []byte
-	coverSize int
 	res       int
 }
 
@@ -150,10 +149,10 @@ func (w *Coordinator) workerLoop() {
 		if len(w.triageQueue) > 0 {
 			n := len(w.triageQueue) - 1
 			input := w.triageQueue[n]
-			w.triageQueue[n] = CoordinatorInput{}
+			w.triageQueue[n] = Input{}
 			w.triageQueue = w.triageQueue[:n]
 			if *flagV >= 2 {
-				log.Printf("worker triages local input [%v]%v minimized=%v smashed=%v", len(input.Data), hash(input.Data), input.Minimized, input.Smashed)
+				log.Printf("worker triages local input [%v]%v minimized=%v", len(input.data), hash(input.data), input.minimized)
 			}
 			w.triageInput(input)
 			continue
@@ -169,81 +168,72 @@ func (w *Coordinator) workerLoop() {
 // triageInput processes every new input.
 // It calculates per-input metrics like execution time, coverage mask,
 // and minimizes the input to the minimal input with the same coverage.
-func (w *Coordinator) triageInput(input CoordinatorInput) {
-	if len(input.Data) > MaxInputSize {
-		input.Data = input.Data[:MaxInputSize]
+func (w *Coordinator) triageInput(input Input) {
+	if len(input.data) > MaxInputSize {
+		input.data = input.data[:MaxInputSize]
 	}
 
 	w.execs++
-	res, cover, output, crashed, hanged := w.coverBin.test(input.Data)
+	res, cover, output, crashed, hanged := w.coverBin.test(input.data)
 	if crashed {
 		// Inputs in corpus should not crash.
-		w.noteCrasher(input.Data, output, hanged)
+		w.noteCrasher(input.data, output, hanged)
 		return
 	}
 
-	inp := Input{
-		data:  input.Data,
-		cover: make([]byte, CoverSize),
-		res:   res,
-	}
-	copy(inp.cover, cover) // cover is shared memory so needs to be copied
+	input.res = res
+	input.cover = make([]byte, CoverSize)
+	copy(input.cover, cover) // cover is shared memory so needs to be copied
 
-	if !input.Minimized {
-		inp.mine = true
+	if !input.minimized {
+		input.minimized = true
 		// When minimizing new inputs we don't pursue exactly the same coverage,
 		// instead we pursue just the "novelty" in coverage.
 		// Here we use corpusCover, because maxCover already includes the input coverage.
-		newCover, ok := findNewCover(w.maxCover, inp.cover)
+		newCover, ok := findNewCover(w.maxCover, input.cover)
 		if !ok {
 			return // covered by somebody else
 		}
-		inp.data = w.minimizeInput(inp.data, false, func(candidate, cover, output []byte, res int, crashed, hanged bool) bool {
+		input.data = w.minimizeInput(input.data, false, func(candidate, cover, output []byte, res int, crashed, hanged bool) bool {
 			if crashed {
 				w.noteCrasher(candidate, output, hanged)
 				return false
 			}
-			if inp.res != res || worseCover(newCover, cover) {
+			if input.res != res || worseCover(newCover, cover) {
 				w.noteNewInput(candidate, cover, res)
 				return false
 			}
 			return true
 		})
 	}
-	inp.coverSize = 0
-	for _, v := range inp.cover {
-		if v != 0 {
-			inp.coverSize++
-		}
-	}
 
 	// New interesting input from worker.
-	if !compareCover(w.maxCover, inp.cover) {
+	if !compareCover(w.maxCover, input.cover) {
 		return
 	}
-	sig := hash(inp.data)
+	sig := hash(input.data)
 	if _, ok := w.corpusSigs[sig]; ok {
 		return
 	}
 
 	// Passed deduplication, taking it.
 	if *flagV >= 2 {
-		log.Printf("hub received new input [%v]%v mine=%v", len(inp.data), hash(inp.data), inp.mine)
+		log.Printf("hub received new input [%v]%v minimized=%v", len(input.data), hash(input.data), input.minimized)
 	}
 	w.corpusSigs[sig] = struct{}{}
-	w.corpusInputs = append(w.corpusInputs, inp)
-	corpusCoverSize := updateMaxCover(w.maxCover, inp.cover)
+	w.corpusInputs = append(w.corpusInputs, input)
+	corpusCoverSize := updateMaxCover(w.maxCover, input.cover)
 	if w.coverFullness < corpusCoverSize {
 		w.coverFullness = corpusCoverSize
 	}
 
-	art := Artifact{inp.data, false}
+	art := Artifact{input.data, false}
 	if !w.corpus.add(art) {
 		// already have this
 		return
 	}
 	w.lastInput = time.Now()
-	w.triageQueue = append(w.triageQueue, CoordinatorInput{inp.data, true, false})
+	w.triageQueue = append(w.triageQueue, input) // huh, we literally just triaged this?
 }
 
 // processCrasher minimizes new crashers and sends them to the hub.
@@ -384,7 +374,7 @@ func (w *Coordinator) noteNewInput(data, cover []byte, res int) {
 		return
 	}
 	if w.updateMaxCover(cover) {
-		w.triageQueue = append(w.triageQueue, CoordinatorInput{makeCopy(data), false, false})
+		w.triageQueue = append(w.triageQueue, Input{data: makeCopy(data), minimized: false})
 	}
 }
 
