@@ -129,6 +129,10 @@ func newWorker(c *Coordinator) {
 
 func (w *Coordinator) workerLoop() {
 	for shutdown.Err() == nil {
+		if *flagV >= 1 {
+			log.Printf("worker loop crasherQueue=%d triageQueue=%d", len(w.crasherQueue), len(w.triageQueue))
+		}
+
 		if time.Since(w.lastSync) > syncPeriod {
 			w.broadcastStats()
 			w.lastSync = time.Now()
@@ -140,7 +144,7 @@ func (w *Coordinator) workerLoop() {
 			w.crasherQueue[n] = NewCrasherArgs{}
 			w.crasherQueue = w.crasherQueue[:n]
 			if *flagV >= 2 {
-				log.Printf("worker processes crasher [%v]%v", len(crash.Data), hash(crash.Data))
+				log.Printf("worker processes crasher [%v]%x", len(crash.Data), hash(crash.Data))
 			}
 			w.processCrasher(crash)
 			continue
@@ -152,7 +156,7 @@ func (w *Coordinator) workerLoop() {
 			w.triageQueue[n] = Input{}
 			w.triageQueue = w.triageQueue[:n]
 			if *flagV >= 2 {
-				log.Printf("worker triages local input [%v]%v minimized=%v", len(input.data), hash(input.data), input.minimized)
+				log.Printf("worker triages local input [%v]%x minimized=%v", len(input.data), hash(input.data), input.minimized)
 			}
 			w.triageInput(input)
 			continue
@@ -218,7 +222,7 @@ func (w *Coordinator) triageInput(input Input) {
 
 	// Passed deduplication, taking it.
 	if *flagV >= 2 {
-		log.Printf("hub received new input [%v]%v minimized=%v", len(input.data), hash(input.data), input.minimized)
+		log.Printf("hub received new input [%v]%x minimized=%v", len(input.data), hash(input.data), input.minimized)
 	}
 	w.corpusSigs[sig] = struct{}{}
 	w.corpusInputs = append(w.corpusInputs, input)
@@ -275,6 +279,9 @@ func (w *Coordinator) processCrasher(crash NewCrasherArgs) {
 // minimizeInput applies series of minimizing transformations to data
 // and asks pred whether the input is equivalent to the original one or not.
 func (w *Coordinator) minimizeInput(data []byte, canonicalize bool, pred func(candidate, cover, output []byte, result int, crashed, hanged bool) bool) []byte {
+	if *flagV >= 2 {
+		log.Printf("worker minimizes input [%v]%x", len(data), hash(data))
+	}
 	res := make([]byte, len(data))
 	copy(res, data)
 	start := time.Now()
