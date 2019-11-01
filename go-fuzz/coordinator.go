@@ -90,25 +90,6 @@ func (c *Coordinator) broadcastStats() {
 	)
 }
 
-// CoordinatorInput is description of input that is passed between coordinator and worker.
-type CoordinatorInput struct {
-	Data      []byte
-	Minimized bool
-	Smashed   bool
-}
-
-// NewInput saves new interesting input on coordinator.
-func (c *Coordinator) NewInput(data []byte, r *int) error {
-	art := Artifact{data, false}
-	if !c.corpus.add(art) {
-		return nil
-	}
-	c.lastInput = time.Now()
-	c.triageQueue = append(c.triageQueue, Input{data: data, minimized: true})
-
-	return nil
-}
-
 type NewCrasherArgs struct {
 	Data        []byte
 	Error       []byte

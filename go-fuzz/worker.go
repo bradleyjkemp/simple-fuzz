@@ -191,23 +191,16 @@ func (w *Coordinator) triageInput(input Input) {
 
 	if !input.minimized {
 		input.minimized = true
-		// When minimizing new inputs we don't pursue exactly the same coverage,
-		// instead we pursue just the "novelty" in coverage.
-		// Here we use corpusCover, because maxCover already includes the input coverage.
-		newCover, ok := findNewCover(w.maxCover, input.cover)
-		if !ok {
-			return // covered by somebody else
-		}
 		input.data = w.minimizeInput(input.data, false, func(candidate, cover, output []byte, res int, crashed, hanged bool) bool {
 			if crashed {
 				w.noteCrasher(candidate, output, hanged)
 				return false
 			}
-			if input.res != res || worseCover(newCover, cover) {
+			if input.res != res {
 				w.noteNewInput(candidate, cover, res)
 				return false
 			}
-			return true
+			return string(input.cover) == string(cover)
 		})
 	}
 
@@ -380,7 +373,7 @@ func (w *Coordinator) noteNewInput(data, cover []byte, res int) {
 		// User said to not add this input to corpus.
 		return
 	}
-	if w.updateMaxCover(cover) {
+	if compareCover(w.maxCover, cover) {
 		w.triageQueue = append(w.triageQueue, Input{data: makeCopy(data), minimized: false})
 	}
 }

@@ -44,7 +44,6 @@ func updateMaxCover(base, cur []byte) int {
 	}
 	cnt := 0
 	for i, x := range cur {
-		x = roundUpCover(x)
 		v := base[i]
 		if v != 0 || x > 0 {
 			cnt++
@@ -54,46 +53,4 @@ func updateMaxCover(base, cur []byte) int {
 		}
 	}
 	return cnt
-}
-
-// Quantize the counters. Otherwise we get too inflated corpus.
-func roundUpCover(x byte) byte {
-	if !*flagCoverCounters && x > 0 {
-		return 255
-	}
-
-	if x <= 5 {
-		return x
-	} else if x <= 8 {
-		return 8
-	} else if x <= 16 {
-		return 16
-	} else if x <= 32 {
-		return 32
-	} else if x <= 64 {
-		return 64
-	}
-	return 255
-}
-
-func findNewCover(base, cover []byte) (res []byte, notEmpty bool) {
-	res = make([]byte, CoverSize)
-	for i, b := range base {
-		c := cover[i]
-		if c > b {
-			res[i] = c
-			notEmpty = true
-		}
-	}
-	return
-}
-
-func worseCover(base, cover []byte) bool {
-	for i, b := range base {
-		c := cover[i]
-		if c < b {
-			return true
-		}
-	}
-	return false
 }
