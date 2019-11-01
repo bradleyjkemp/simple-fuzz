@@ -24,15 +24,6 @@ const (
 	syncPeriod = 3 * time.Second
 )
 
-type ROData struct {
-	corpus       []Input
-	corpusCover  []byte
-	badInputs    map[Sig]struct{}
-	suppressions map[Sig]struct{}
-	strLits      [][]byte // string literals in testee
-	intLits      [][]byte // int literals in testee
-}
-
 type Input struct {
 	mine      bool
 	data      []byte
