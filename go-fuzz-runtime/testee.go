@@ -1,7 +1,7 @@
 // Copyright 2015 go-fuzz project authors. All rights reserved.
 // Use of this source code is governed by Apache 2 LICENSE that can be found in the LICENSE file.
 
-package main
+package gofuzzdep
 
 import (
 	"encoding/binary"
@@ -28,7 +28,7 @@ type Testee struct {
 	inPipe      *os.File
 	outPipe     *os.File
 	stdoutPipe  *os.File
-	writebuf    [9]byte  // reusable write buffer
+	writebuf    [8]byte  // reusable write buffer
 	resbuf      [16]byte // reusable results buffer
 	execs       int
 	startTime   int64
@@ -141,7 +141,7 @@ retry:
 	if err != nil {
 		log.Fatalf("failed to pipe: %v", err)
 	}
-	cmd := exec.Command(bin)
+	cmd := exec.Command(bin, "--coordinator=false")
 	if *flagTestOutput {
 		// For debugging of testee failures.
 		cmd.Stdout = os.Stdout
@@ -263,8 +263,7 @@ func (t *Testee) test(data []byte) (res int, cover []byte, crashed, hanged, retr
 
 	copy(t.inputRegion[:], data)
 	atomic.StoreInt64(&t.startTime, time.Now().UnixNano())
-	t.writebuf[0] = t.fnidx
-	binary.LittleEndian.PutUint64(t.writebuf[1:], uint64(len(data)))
+	binary.LittleEndian.PutUint64(t.writebuf[:], uint64(len(data)))
 	if _, err := t.outPipe.Write(t.writebuf[:]); err != nil {
 		if *flagV >= 1 {
 			log.Printf("write to testee failed: %v", err)

@@ -14,29 +14,26 @@ import (
 	"io"
 	"strconv"
 	"strings"
-
-	. "github.com/bradleyjkemp/simple-fuzz/go-fuzz-types"
 )
 
 const fuzzdepPkg = "_go_fuzz_dep_"
 
-func instrument(pkg, fullName string, fset *token.FileSet, parsedFile *ast.File, info *types.Info, out io.Writer, blocks *[]CoverBlock) {
+func instrument(pkg, fullName string, fset *token.FileSet, parsedFile *ast.File, info *types.Info, out io.Writer) {
 	file := &File{
 		fset:     fset,
 		pkg:      pkg,
 		fullName: fullName,
 		astFile:  parsedFile,
-		blocks:   blocks,
 		info:     info,
 	}
-	file.addImport("go-fuzz-dep", fuzzdepPkg, "CoverTab")
+	file.addImport("go-fuzz-runtime", fuzzdepPkg, "CoverTab")
 	ast.Walk(file, file.astFile)
 	file.print(out)
 }
 
 type LiteralCollector struct {
 	ctxt *Context
-	lits map[Literal]struct{}
+	lits map[string]struct{}
 }
 
 func (lc *LiteralCollector) Visit(n ast.Node) (w ast.Visitor) {
@@ -62,10 +59,12 @@ func (lc *LiteralCollector) Visit(n ast.Node) (w ast.Visitor) {
 	case *ast.BasicLit:
 		lit := nn.Value
 		switch nn.Kind {
-		case token.STRING:
-			lc.lits[Literal{lc.unquote(lit), true}] = struct{}{}
 		case token.CHAR:
-			lc.lits[Literal{lc.unquote(lit), false}] = struct{}{}
+			// Conver 'a' -> "a"
+			lit = fmt.Sprintf("\"%c\"", lit[1])
+			fallthrough
+		case token.STRING:
+			lc.lits[lit] = struct{}{}
 		case token.INT:
 			if lit[0] < '0' || lit[0] > '9' {
 				lc.ctxt.failf("unsupported literal '%v'", lit)
@@ -88,7 +87,7 @@ func (lc *LiteralCollector) Visit(n ast.Node) (w ast.Visitor) {
 			} else {
 				val = append(val, byte(v), byte(v>>8), byte(v>>16), byte(v>>24), byte(v>>32), byte(v>>40), byte(v>>48), byte(v>>56))
 			}
-			lc.lits[Literal{string(val), false}] = struct{}{}
+			lc.lits[strconv.Quote(string(val))] = struct{}{}
 		}
 		return nil
 	}
@@ -138,7 +137,6 @@ type File struct {
 	pkg      string
 	fullName string
 	astFile  *ast.File
-	blocks   *[]CoverBlock
 	info     *types.Info
 }
 
@@ -486,12 +484,6 @@ func genCounter() int {
 func (f *File) newCounter(start, end token.Pos, numStmt int) ast.Stmt {
 	cnt := genCounter()
 
-	if f.blocks != nil {
-		s := f.fset.Position(start)
-		e := f.fset.Position(end)
-		*f.blocks = append(*f.blocks, CoverBlock{cnt, f.fullName, s.Line, s.Column, e.Line, e.Column, numStmt})
-	}
-
 	idx := &ast.BasicLit{
 		Kind:  token.INT,
 		Value: strconv.Itoa(cnt),
@@ -543,12 +535,4 @@ func hasFuncLiteral(n ast.Node) (bool, token.Pos) {
 	var literal funcLitFinder
 	ast.Walk(&literal, n)
 	return literal.found(), token.Pos(literal)
-}
-
-func (lc *LiteralCollector) unquote(s string) string {
-	t, err := strconv.Unquote(s)
-	if err != nil {
-		lc.ctxt.failf("cover: improperly quoted string %q\n", s)
-	}
-	return t
 }

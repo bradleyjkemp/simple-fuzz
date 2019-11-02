@@ -1,7 +1,7 @@
 // Copyright 2015 go-fuzz project authors. All rights reserved.
 // Use of this source code is governed by Apache 2 LICENSE that can be found in the LICENSE file.
 
-package main
+package gofuzzdep
 
 import (
 	"context"
@@ -16,15 +16,13 @@ import (
 	"syscall"
 	"time"
 
-	"golang.org/x/tools/go/packages"
+	"github.com/pkg/profile"
 )
 
 var (
 	flagWorkdir    = flag.String("workdir", ".", "dir with persistent work data")
 	flagTimeout    = flag.Int("timeout", 10, "test timeout, in seconds")
 	flagMinimize   = flag.Duration("minimize", 1*time.Minute, "time limit for input minimization")
-	flagBin        = flag.String("bin", "", "test binary built with go-fuzz-build")
-	flagFunc       = flag.String("func", "", "function to fuzz")
 	flagDup        = flag.Bool("dup", false, "collect duplicate crashers")
 	flagTestOutput = flag.Bool("testoutput", false, "print test binary output to stdout (for debugging only)")
 	flagV          = flag.Int("v", 0, "verbosity level")
@@ -32,8 +30,8 @@ var (
 	shutdown context.Context
 )
 
-func main() {
-	flag.Parse()
+func CoordinatorMain(literals []string) {
+	defer profile.Start().Stop()
 	sigChan := make(chan os.Signal, 1)
 	signal.Notify(sigChan, syscall.SIGINT)
 	go func() {
@@ -47,26 +45,6 @@ func main() {
 	debug.SetGCPercent(50) // most memory is in large binary blobs
 
 	*flagWorkdir = expandHomeDir(*flagWorkdir)
-	*flagBin = expandHomeDir(*flagBin)
-
-	if *flagBin == "" {
-		// Try the default. Best effort only.
-		var bin string
-		cfg := new(packages.Config)
-		cfg.Env = append(os.Environ(), "GO111MODULE=off")
-		pkgs, err := packages.Load(cfg, ".")
-		if err == nil && len(pkgs) == 1 {
-			bin = pkgs[0].Name + "-fuzz.zip"
-			_, err := os.Stat(bin)
-			if err != nil {
-				bin = ""
-			}
-		}
-		if bin == "" {
-			log.Fatalf("-bin is not set")
-		}
-		*flagBin = bin
-	}
 
 	w := &Coordinator{
 		startTime:      time.Now(),
@@ -80,6 +58,12 @@ func main() {
 
 	if len(w.corpus.m) == 0 {
 		w.corpus.add(Artifact{[]byte{}, false})
+	}
+
+	// Prepare list of string and integer literals.
+	for _, lit := range literals {
+		w.strLits = append(w.strLits, []byte(lit))
+		w.intLits = append(w.intLits, []byte(lit))
 	}
 
 	newWorker(w)
@@ -127,7 +111,6 @@ func main() {
 		w.testInput(data)
 	}
 	w.shutdown()
-	os.Exit(0)
 }
 
 // expandHomeDir expands the tilde sign and replaces it

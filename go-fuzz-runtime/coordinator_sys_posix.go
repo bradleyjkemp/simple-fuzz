@@ -3,7 +3,7 @@
 
 // +build darwin linux freebsd dragonfly openbsd netbsd
 
-package main
+package gofuzzdep
 
 import (
 	"log"

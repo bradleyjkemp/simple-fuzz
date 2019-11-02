@@ -4,9 +4,7 @@
 package main
 
 import (
-	"archive/zip"
 	"bytes"
-	"encoding/json"
 	"flag"
 	"fmt"
 	"go/ast"
@@ -26,8 +24,6 @@ import (
 	"unicode/utf8"
 
 	"golang.org/x/tools/go/packages"
-
-	. "github.com/bradleyjkemp/simple-fuzz/go-fuzz-types"
 )
 
 var (
@@ -81,8 +77,7 @@ func main() {
 	c.populateWorkdir() // copy tools and packages to workdir as needed
 
 	if *flagOut == "" {
-		ext := ".zip"
-		*flagOut = c.pkgs[0].Name + "-fuzz" + ext
+		*flagOut = c.pkgs[0].Name + "-fuzz"
 	}
 
 	// Gather literals, instrument, and compile.
@@ -101,45 +96,7 @@ func main() {
 	// go/printer handles this automatically using Mode printer.SourcePos.
 	// We'd need to implement that support ourselves. (It's do-able but non-trivial.)
 	// See also https://golang.org/issue/29824.
-	lits := c.gatherLiterals()
-	var blocks []CoverBlock
-
-	coverBin := c.buildInstrumentedBinary(&blocks)
-	metaData := c.createMeta(lits, blocks)
-	defer func() {
-		os.Remove(coverBin)
-		os.Remove(metaData)
-	}()
-
-	outf, err := os.Create(*flagOut)
-	if err != nil {
-		c.failf("failed to create output file: %v", err)
-	}
-	zipw := zip.NewWriter(outf)
-	zipFile := func(name, datafile string) {
-		w, err := zipw.Create(name)
-		if err != nil {
-			c.failf("failed to create zip file: %v", err)
-		}
-		f, err := os.Open(datafile)
-		if err != nil {
-			c.failf("failed to open data file %v", datafile)
-		}
-		if _, err := io.Copy(w, f); err != nil {
-			c.failf("failed to write %v to zip file: %v", datafile, err)
-		}
-		// best effort: close and remove our temp file
-		f.Close()
-		os.Remove(datafile)
-	}
-	zipFile("cover.exe", coverBin)
-	zipFile("metadata", metaData)
-	if err := zipw.Close(); err != nil {
-		c.failf("failed to close zip file: %v", err)
-	}
-	if err := outf.Close(); err != nil {
-		c.failf("failed to close out file: %v", err)
-	}
+	c.buildInstrumentedBinary()
 }
 
 // Context holds state for a go-fuzz-build run.
@@ -238,9 +195,9 @@ func (c *Context) loadPkg(pkg string) {
 	}
 	// We need to load:
 	// * the target package, obviously
-	// * go-fuzz-dep, since we use it for instrumentation
+	// * go-fuzz-runtime, since we use it for instrumentation
 	// * reflect, if we are using libfuzzer, since its generated main function requires it
-	loadpkgs := []string{pkg, "github.com/bradleyjkemp/simple-fuzz/go-fuzz-dep"}
+	loadpkgs := []string{pkg, "github.com/bradleyjkemp/simple-fuzz/go-fuzz-runtime"}
 	initial, err := packages.Load(cfg, loadpkgs...)
 	if err != nil {
 		c.failf("could not load packages: %v", err)
@@ -421,24 +378,9 @@ func (c *Context) populateWorkdir() {
 	c.copyFuzzDep()
 }
 
-func (c *Context) createMeta(lits map[Literal]struct{}, blocks []CoverBlock) string {
-	meta := MetaData{Blocks: blocks, Funcs: c.allFuncs, DefaultFunc: *flagFunc}
-	for k := range lits {
-		meta.Literals = append(meta.Literals, k)
-	}
-	data, err := json.Marshal(meta)
-	if err != nil {
-		c.failf("failed to serialize meta information: %v", err)
-	}
-	f := c.tempFile()
-	c.writeFile(f, data)
-	return f
-}
-
-func (c *Context) buildInstrumentedBinary(blocks *[]CoverBlock) string {
-	c.instrumentPackages(blocks)
+func (c *Context) buildInstrumentedBinary() {
+	c.instrumentPackages()
 	mainPkg := c.createFuzzMain()
-	outf := c.tempFile()
 	args := []string{"build"}
 	if *flagBuildX {
 		args = append(args, "-x")
@@ -450,7 +392,7 @@ func (c *Context) buildInstrumentedBinary(blocks *[]CoverBlock) string {
 	if c.cmdGoHasTrimPath {
 		args = append(args, "-trimpath")
 	}
-	args = append(args, "-o", outf, mainPkg)
+	args = append(args, "-o", *flagOut, mainPkg)
 	cmd := exec.Command("go", args...)
 	cmd.Env = append(os.Environ(),
 		"GOROOT="+filepath.Join(c.workdir, "goroot"),
@@ -460,7 +402,6 @@ func (c *Context) buildInstrumentedBinary(blocks *[]CoverBlock) string {
 	if out, err := cmd.CombinedOutput(); err != nil {
 		c.failf("failed to execute go build: %v\n%v", err, string(out))
 	}
-	return outf
 }
 
 func (c *Context) calcIgnore() {
@@ -476,7 +417,7 @@ func (c *Context) calcIgnore() {
 	// noisy (because they are low level), and/or not interesting.
 	// We could manually maintain this list, but that makes go-fuzz-build
 	// fragile in the face of internal standard library package changes.
-	roots := c.packagesNamed("runtime", "github.com/bradleyjkemp/simple-fuzz/go-fuzz-dep")
+	roots := c.packagesNamed("runtime", "github.com/bradleyjkemp/simple-fuzz/go-fuzz-runtime")
 	packages.Visit(roots, func(p *packages.Package) bool {
 		c.ignore[p.PkgPath] = true
 		return true
@@ -489,14 +430,14 @@ func (c *Context) calcIgnore() {
 	}
 }
 
-func (c *Context) gatherLiterals() map[Literal]struct{} {
+func (c *Context) gatherLiterals() []string {
 	nolits := map[string]bool{
 		"math":    true,
 		"os":      true,
 		"unicode": true,
 	}
 
-	lits := make(map[Literal]struct{})
+	lits := make(map[string]struct{})
 	visit := func(pkg *packages.Package) {
 		if c.ignore[pkg.PkgPath] || nolits[pkg.PkgPath] {
 			return
@@ -507,7 +448,12 @@ func (c *Context) gatherLiterals() map[Literal]struct{} {
 	}
 
 	packages.Visit(c.pkgs, nil, visit)
-	return lits
+
+	litsList := make([]string, 0, len(lits))
+	for lit, _ := range lits {
+		litsList = append(litsList, lit)
+	}
+	return litsList
 }
 
 func (c *Context) copyFuzzDep() {
@@ -518,9 +464,9 @@ func (c *Context) copyFuzzDep() {
 	// which can be duplicated safely.
 	// So we eliminate the import statement and copy go-fuzz-defs/defs.go
 	// directly into the go-fuzz-dep package.
-	newDir := filepath.Join(c.workdir, "goroot", "src", "go-fuzz-dep")
+	newDir := filepath.Join(c.workdir, "goroot", "src", "go-fuzz-runtime")
 	c.mkdirAll(newDir)
-	dep := c.packageNamed("github.com/bradleyjkemp/simple-fuzz/go-fuzz-dep")
+	dep := c.packageNamed("github.com/bradleyjkemp/simple-fuzz/go-fuzz-runtime")
 	for _, f := range dep.GoFiles {
 		data := c.readFile(f)
 		// Eliminate the dot import.
@@ -537,20 +483,17 @@ func (c *Context) copyFuzzDep() {
 	}
 }
 
-func (c *Context) funcMain() []byte {
-	dot := map[string]interface{}{"Pkg": c.fuzzpkg.PkgPath, "AllFuncs": c.allFuncs, "DefaultFunc": *flagFunc}
-	buf := new(bytes.Buffer)
-	if err := mainSrc.Execute(buf, dot); err != nil {
-		c.failf("could not execute template: %v", err)
-	}
-	return buf.Bytes()
-}
-
 func (c *Context) createFuzzMain() string {
 	mainPkg := filepath.Join(c.fuzzpkg.PkgPath, "go.fuzz.main")
 	path := filepath.Join(c.workdir, "gopath", "src", mainPkg)
 	c.mkdirAll(path)
-	c.writeFile(filepath.Join(path, "main.go"), c.funcMain())
+
+	dot := map[string]interface{}{"Pkg": c.fuzzpkg.PkgPath, "AllFuncs": c.allFuncs, "DefaultFunc": *flagFunc, "Literals": c.gatherLiterals()}
+	buf := new(bytes.Buffer)
+	if err := mainSrc.Execute(buf, dot); err != nil {
+		c.failf("could not execute template: %v", err)
+	}
+	c.writeFile(filepath.Join(path, "main.go"), buf.Bytes())
 	return mainPkg
 }
 
@@ -610,7 +553,7 @@ func (c *Context) packagesNamed(paths ...string) (pkgs []*packages.Package) {
 	return pkgs
 }
 
-func (c *Context) instrumentPackages(blocks *[]CoverBlock) {
+func (c *Context) instrumentPackages() {
 	visit := func(pkg *packages.Package) {
 		if c.ignore[pkg.PkgPath] {
 			return
@@ -640,7 +583,7 @@ func (c *Context) instrumentPackages(blocks *[]CoverBlock) {
 			buf := new(bytes.Buffer)
 			content := c.readFile(fullName)
 			buf.Write(initialComments(content)) // Retain '// +build' directives.
-			instrument(pkg.PkgPath, fullName, pkg.Fset, f, pkg.TypesInfo, buf, blocks)
+			instrument(pkg.PkgPath, fullName, pkg.Fset, f, pkg.TypesInfo, buf)
 			tmp := c.tempFile()
 			c.writeFile(tmp, buf.Bytes())
 			outpath := filepath.Join(path, fname)
@@ -743,15 +686,31 @@ package main
 
 import (
 	target "{{.Pkg}}"
-	dep "go-fuzz-dep"
+	dep "go-fuzz-runtime"
+	"flag"
+)
+
+var (
+	flagCoordinator = flag.Bool("coordinator", true, "whether this is the coordinator or the runner")
+)
+
+var (
+	literals = []string{
+		{{range .Literals}}{{.}},{{end}}
+	}
 )
 
 func main() {
-	fns := []func([]byte)int {
-		{{range .AllFuncs}}
-			target.{{.}},
-		{{end}}
+	flag.Parse()
+	if *flagCoordinator {
+		dep.CoordinatorMain(literals)
+	} else {
+		fns := []func([]byte)int {
+			{{range .AllFuncs}}
+				target.{{.}},
+			{{end}}
+		}
+		dep.RunnerMain(fns)
 	}
-	dep.Main(fns)
 }
 `))

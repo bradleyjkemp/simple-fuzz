@@ -12,13 +12,13 @@ import (
 	. "github.com/bradleyjkemp/simple-fuzz/go-fuzz-defs"
 )
 
-func Main(fns []func([]byte) int) {
+func RunnerMain(fns []func([]byte) int) {
 	mem, inFD, outFD := setupCommFile()
 	CoverTab = (*[CoverSize]byte)(unsafe.Pointer(&mem[0]))
 	input := mem[CoverSize : CoverSize+MaxInputSize]
 	runtime.GOMAXPROCS(1) // makes coverage more deterministic, we parallelize on higher level
 	for {
-		fnidx, n := read(inFD)
+		fnidx, n := 0, readInputSize(inFD) // TODO: don't hardcode functionID=0
 		if n > uint64(len(input)) {
 			println("invalid input length")
 			syscall.Exit(1)
@@ -34,9 +34,9 @@ func Main(fns []func([]byte) int) {
 }
 
 // read reads little-endian-encoded uint8+uint64 from fd.
-func read(fd FD) (uint8, uint64) {
+func readInputSize(fd FD) uint64 {
 	rd := 0
-	var buf [9]byte
+	var buf [8]byte
 	for rd != len(buf) {
 		n, err := fd.read(buf[rd:])
 		if err == syscall.EINTR {
@@ -51,7 +51,7 @@ func read(fd FD) (uint8, uint64) {
 		}
 		rd += n
 	}
-	return buf[0], deserialize64(buf[1:])
+	return deserialize64(buf[:])
 }
 
 // write writes little-endian-encoded vals... to fd.

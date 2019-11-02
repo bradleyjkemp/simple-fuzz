@@ -1,23 +1,17 @@
 // Copyright 2015 go-fuzz project authors. All rights reserved.
 // Use of this source code is governed by Apache 2 LICENSE that can be found in the LICENSE file.
 
-package main
+package gofuzzdep
 
 import (
-	"archive/zip"
 	"bufio"
 	"bytes"
-	"encoding/json"
-	"io"
-	"io/ioutil"
 	"log"
 	"os"
-	"path/filepath"
 	"strings"
 	"time"
 
 	. "github.com/bradleyjkemp/simple-fuzz/go-fuzz-defs"
-	. "github.com/bradleyjkemp/simple-fuzz/go-fuzz-types"
 )
 
 const (
@@ -32,90 +26,12 @@ type Input struct {
 }
 
 func newWorker(c *Coordinator) {
-	zipr, err := zip.OpenReader(*flagBin)
-	if err != nil {
-		log.Fatalf("failed to open bin file: %v", err)
-	}
-	var coverBin string
-	var metadata MetaData
-	for _, zipf := range zipr.File {
-		r, err := zipf.Open()
-		if err != nil {
-			log.Fatalf("failed to unzip file from input archive: %v", err)
-		}
-		if zipf.Name == "metadata" {
-			if err := json.NewDecoder(r).Decode(&metadata); err != nil {
-				log.Fatalf("failed to decode metadata: %v", err)
-			}
-		} else {
-			f, err := ioutil.TempFile("", "go-fuzz")
-			if err != nil {
-				log.Fatalf("failed to create temp file: %v", err)
-			}
-			f.Close()
-			os.Remove(f.Name())
-			f, err = os.OpenFile(f.Name()+filepath.Base(zipf.Name), os.O_WRONLY|os.O_CREATE|os.O_EXCL, 0700)
-			if err != nil {
-				log.Fatalf("failed to create temp file: %v", err)
-			}
-			if _, err := io.Copy(f, r); err != nil {
-				log.Fatalf("failed to uzip bin file: %v", err)
-			}
-			f.Close()
-			switch zipf.Name {
-			case "cover.exe":
-				coverBin = f.Name()
-			default:
-				log.Fatalf("unknown file '%v' in input archive", f.Name())
-			}
-		}
-		r.Close()
-	}
-	zipr.Close()
-	if coverBin == "" || len(metadata.Blocks) == 0 || len(metadata.Funcs) == 0 {
-		log.Fatalf("bad input archive: missing file")
-	}
-
-	// Which function should we fuzz?
-	fnname := *flagFunc
-	if fnname == "" {
-		fnname = metadata.DefaultFunc
-	}
-	if fnname == "" && len(metadata.Funcs) == 1 {
-		fnname = metadata.Funcs[0]
-	}
-	if fnname == "" {
-		log.Fatalf("-func flag not provided, but multiple fuzz functions available: %v", strings.Join(metadata.Funcs, ", "))
-	}
-	fnidx := -1
-	for i, n := range metadata.Funcs {
-		if n == fnname {
-			fnidx = i
-			break
-		}
-	}
-	if fnidx == -1 {
-		log.Fatalf("function %v not found, available functions are: %v", fnname, strings.Join(metadata.Funcs, ", "))
-	}
-	if int(uint8(fnidx)) != fnidx {
-		log.Fatalf("internal consistency error, please file an issue: too many fuzz functions: %v", metadata.Funcs)
-	}
-
 	c.corpusSigs = make(map[Sig]struct{})
 
 	c.maxCover = make([]byte, CoverSize)
 
-	// Prepare list of string and integer literals.
-	for _, lit := range metadata.Literals {
-		if lit.IsStr {
-			c.strLits = append(c.strLits, []byte(lit.Val))
-		} else {
-			c.intLits = append(c.intLits, []byte(lit.Val))
-		}
-	}
-
 	c.mutator = newMutator()
-	c.coverBin = newTestBinary(coverBin, &c.execs, &c.restarts, uint8(fnidx))
+	c.coverBin = newTestBinary(os.Args[0], &c.execs, &c.restarts, 0)
 }
 
 func (w *Coordinator) workerLoop() {
@@ -385,7 +301,6 @@ func (w *Coordinator) noteCrasher(data, output []byte, hanged bool) {
 // shutdown cleanups after worker, it is not guaranteed to be called.
 func (w *Coordinator) shutdown() {
 	w.coverBin.close()
-	os.Remove(w.coverBin.fileName)
 }
 
 func extractSuppression(out []byte) []byte {
