@@ -76,10 +76,6 @@ func newWorker(c *Coordinator) {
 		log.Fatalf("bad input archive: missing file")
 	}
 
-	cleanup := func() {
-		os.Remove(coverBin)
-	}
-
 	// Which function should we fuzz?
 	fnname := *flagFunc
 	if fnname == "" {
@@ -89,7 +85,6 @@ func newWorker(c *Coordinator) {
 		fnname = metadata.Funcs[0]
 	}
 	if fnname == "" {
-		cleanup()
 		log.Fatalf("-func flag not provided, but multiple fuzz functions available: %v", strings.Join(metadata.Funcs, ", "))
 	}
 	fnidx := -1
@@ -100,15 +95,11 @@ func newWorker(c *Coordinator) {
 		}
 	}
 	if fnidx == -1 {
-		cleanup()
 		log.Fatalf("function %v not found, available functions are: %v", fnname, strings.Join(metadata.Funcs, ", "))
 	}
 	if int(uint8(fnidx)) != fnidx {
-		cleanup()
 		log.Fatalf("internal consistency error, please file an issue: too many fuzz functions: %v", metadata.Funcs)
 	}
-
-	shutdownCleanup = append(shutdownCleanup, cleanup)
 
 	c.corpusSigs = make(map[Sig]struct{})
 
@@ -394,6 +385,7 @@ func (w *Coordinator) noteCrasher(data, output []byte, hanged bool) {
 // shutdown cleanups after worker, it is not guaranteed to be called.
 func (w *Coordinator) shutdown() {
 	w.coverBin.close()
+	os.Remove(w.coverBin.fileName)
 }
 
 func extractSuppression(out []byte) []byte {

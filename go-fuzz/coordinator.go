@@ -7,7 +7,6 @@ import (
 	"bytes"
 	"fmt"
 	"log"
-	"path/filepath"
 	"time"
 )
 
@@ -40,31 +39,6 @@ type Coordinator struct {
 	startTime     time.Time
 	lastInput     time.Time
 	coverFullness int
-}
-
-// coordinatorMain is entry function for coordinator.
-func coordinatorMain() {
-	c := &Coordinator{
-		startTime:      time.Now(),
-		lastInput:      time.Now(),
-		suppressions:   newPersistentSet(filepath.Join(*flagWorkdir, "suppressions")),
-		crashers:       newPersistentSet(filepath.Join(*flagWorkdir, "crashers")),
-		corpus:         newPersistentSet(filepath.Join(*flagWorkdir, "corpus")),
-		badInputs:      make(map[Sig]struct{}),
-		suppressedSigs: make(map[Sig]struct{}),
-	}
-
-	if len(c.corpus.m) == 0 {
-		c.corpus.add(Artifact{[]byte{}, false})
-	}
-
-	newWorker(c)
-	// Give the worker initial corpus.
-	for _, a := range c.corpus.m {
-		c.triageQueue = append(c.triageQueue, Input{data: a.data, minimized: !a.user})
-	}
-
-	go c.workerLoop()
 }
 
 func (c *Coordinator) broadcastStats() {
