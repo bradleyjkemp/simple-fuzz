@@ -15,8 +15,6 @@ import (
 	"runtime/debug"
 	"syscall"
 	"time"
-
-	"github.com/pkg/profile"
 )
 
 var (
@@ -31,7 +29,6 @@ var (
 )
 
 func CoordinatorMain(literals []string) {
-	defer profile.Start().Stop()
 	sigChan := make(chan os.Signal, 1)
 	signal.Notify(sigChan, syscall.SIGINT)
 	go func() {
