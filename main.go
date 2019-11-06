@@ -11,7 +11,6 @@ import (
 	"go/parser"
 	"go/token"
 	"go/types"
-	"io"
 	"io/ioutil"
 	"os"
 	"os/exec"
@@ -528,30 +527,12 @@ func (c *Context) copyDir(dir, newDir string) {
 }
 
 func (c *Context) copyFile(src, dst string) {
-	r, err := os.Open(src)
+	contents, err := ioutil.ReadFile(src)
 	if err != nil {
 		c.failf("copyFile: could not read %v", src, err)
 	}
-	w, err := os.OpenFile(dst, os.O_WRONLY|os.O_CREATE|os.O_TRUNC, 0700)
-	if err != nil {
+	if err := ioutil.WriteFile(dst, contents, 0700); err != nil {
 		c.failf("copyFile: could not write %v: %v", dst, err)
-	}
-	if _, err := io.Copy(w, r); err != nil {
-		c.failf("copyFile: copying failed: %v", err)
-	}
-	if err := r.Close(); err != nil {
-		c.failf("copyFile: closing %v failed: %v", src, err)
-	}
-	if err := w.Close(); err != nil {
-		c.failf("copyFile: closing %v failed: %v", dst, err)
-	}
-}
-
-func (c *Context) moveFile(src, dst string) {
-	c.copyFile(src, dst)
-	err := os.Remove(src)
-	if err != nil {
-		c.failf("moveFile: removing %q failed: %v", src, err)
 	}
 }
 
