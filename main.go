@@ -28,8 +28,6 @@ import (
 var (
 	flagOut      = flag.String("o", "", "output file")
 	flagFunc     = flag.String("func", "", "preferred entry function")
-	flagWork     = flag.Bool("work", false, "don't remove working directory")
-	flagBuildX   = flag.Bool("x", false, "print the commands if build fails")
 	flagPreserve = flag.String("preserve", "", "a comma-separated list of import paths not to instrument")
 )
 
@@ -65,13 +63,13 @@ func main() {
 		c.failf("provided -func=%v, but %v is not a fuzz function name", *flagFunc, *flagFunc)
 	}
 
-	c.loadPkg(pkg)      // load and typecheck pkg
-	c.getEnv()          // discover GOROOT, GOPATH
-	c.loadStd()         // load standard library
-	c.calcIgnore()      // calculate set of packages to ignore
-	c.makeWorkdir()     // create workdir
-	defer c.cleanup()   // delete workdir as needed, etc.
-	c.populateWorkdir() // copy tools and packages to workdir as needed
+	c.loadPkg(pkg)                // load and typecheck pkg
+	c.getEnv()                    // discover GOROOT, GOPATH
+	c.loadStd()                   // load standard library
+	c.calcIgnore()                // calculate set of packages to ignore
+	c.makeWorkdir()               // create workdir
+	defer os.RemoveAll(c.workdir) // delete workdir
+	c.populateWorkdir()           // copy tools and packages to workdir as needed
 
 	if *flagOut == "" {
 		*flagOut = c.pkgs[0].Name + "-fuzz"
@@ -305,16 +303,6 @@ func (c *Context) makeWorkdir() {
 	if err != nil {
 		c.failf("failed to create temp dir: %v", err)
 	}
-	if *flagWork {
-		fmt.Printf("workdir: %v\n", c.workdir)
-	}
-}
-
-// cleanup ensures a clean exit. It should be called on all (controllable) exit paths.
-func (c *Context) cleanup() {
-	if !*flagWork && c.workdir != "" {
-		os.RemoveAll(c.workdir)
-	}
 }
 
 // populateWorkdir prepares workdir for builds.
@@ -351,16 +339,7 @@ func (c *Context) populateWorkdir() {
 func (c *Context) buildInstrumentedBinary() {
 	c.instrumentPackages()
 	mainPkg := c.createFuzzMain()
-	args := []string{"build", "-trimpath"}
-	if *flagBuildX {
-		args = append(args, "-x")
-
-		if *flagWork {
-			args = append(args, "-work")
-		}
-	}
-	args = append(args, "-o", *flagOut, mainPkg)
-	cmd := exec.Command("go", args...)
+	cmd := exec.Command("go", "build", "-trimpath", "-o", *flagOut, mainPkg)
 	cmd.Env = append(os.Environ(),
 		"GOROOT="+filepath.Join(c.workdir, "goroot"),
 		"GOPATH="+filepath.Join(c.workdir, "gopath"),
@@ -584,7 +563,7 @@ func (c *Context) moveFile(src, dst string) {
 }
 
 func (c *Context) failf(str string, args ...interface{}) {
-	c.cleanup()
+	os.RemoveAll(c.workdir)
 	fmt.Fprintf(os.Stderr, str+"\n", args...)
 	os.Exit(1)
 }
