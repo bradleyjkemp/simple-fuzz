@@ -561,19 +561,6 @@ func (c *Context) failf(str string, args ...interface{}) {
 	os.Exit(1)
 }
 
-// tempFile creates and deletes a temp file, and returns its path.
-// This is helpful when you need a temp path for an output file
-// that will be created by an external tool (go build) or by a call to writeFile.
-func (c *Context) tempFile() string {
-	outf, err := ioutil.TempFile("", "go-fuzz")
-	if err != nil {
-		c.failf("failed to create temp file: %v", err)
-	}
-	outf.Close()
-	os.Remove(outf.Name()) // necessary on Windows
-	return outf.Name()
-}
-
 func (c *Context) readFile(name string) []byte {
 	data, err := ioutil.ReadFile(name)
 	if err != nil {
