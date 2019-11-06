@@ -241,21 +241,8 @@ func (c *Context) loadPkg(pkg string) {
 // isFuzzSig reports whether sig is of the form
 //   func FuzzFunc(data []byte) int
 func isFuzzSig(sig *types.Signature) bool {
-	return tupleHasTypes(sig.Params(), "[]byte") && tupleHasTypes(sig.Results(), "int")
-}
-
-// tupleHasTypes reports whether tuple is composed of
-// elements with exactly the types in types.
-func tupleHasTypes(tuple *types.Tuple, types ...string) bool {
-	if tuple.Len() != len(types) {
-		return false
-	}
-	for i, t := range types {
-		if tuple.At(i).Type().String() != t {
-			return false
-		}
-	}
-	return true
+	return sig.Params().Len() == 1 && sig.Params().At(0).Type().String() == "[]byte" &&
+		sig.Results().Len() == 1 && sig.Results().At(0).Type().String() == "int"
 }
 
 func isFuzzFuncName(name string) bool {
