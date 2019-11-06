@@ -430,32 +430,6 @@ func (c *Context) calcIgnore() {
 	}
 }
 
-func (c *Context) gatherLiterals() []string {
-	nolits := map[string]bool{
-		"math":    true,
-		"os":      true,
-		"unicode": true,
-	}
-
-	lits := make(map[string]struct{})
-	visit := func(pkg *packages.Package) {
-		if c.ignore[pkg.PkgPath] || nolits[pkg.PkgPath] {
-			return
-		}
-		for _, f := range pkg.Syntax {
-			ast.Walk(&LiteralCollector{lits: lits, ctxt: c}, f)
-		}
-	}
-
-	packages.Visit(c.pkgs, nil, visit)
-
-	litsList := make([]string, 0, len(lits))
-	for lit, _ := range lits {
-		litsList = append(litsList, lit)
-	}
-	return litsList
-}
-
 func (c *Context) copyFuzzDep() {
 	// Standard library packages can't depend on non-standard ones.
 	// So we pretend that go-fuzz-dep is a standard one.
