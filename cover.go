@@ -4,7 +4,6 @@
 package main
 
 import (
-	"bytes"
 	"crypto/sha1"
 	"fmt"
 	"go/ast"
@@ -47,29 +46,6 @@ func trimComments(file *ast.File, fset *token.FileSet) []*ast.CommentGroup {
 	return comments
 }
 
-func initialComments(content []byte) []byte {
-	// Derived from go/build.Context.shouldBuild.
-	end := 0
-	p := content
-	for len(p) > 0 {
-		line := p
-		if i := bytes.IndexByte(line, '\n'); i >= 0 {
-			line, p = line[:i], p[i+1:]
-		} else {
-			p = p[len(p):]
-		}
-		line = bytes.TrimSpace(line)
-		if len(line) == 0 { // Blank line.
-			end = len(content) - len(p)
-			continue
-		}
-		if !bytes.HasPrefix(line, slashslash) { // Not comment line.
-			break
-		}
-	}
-	return content[:end]
-}
-
 type File struct {
 	fset     *token.FileSet
 	pkg      string
@@ -77,8 +53,6 @@ type File struct {
 	astFile  *ast.File
 	info     *types.Info
 }
-
-var slashslash = []byte("//")
 
 func (f *File) Visit(node ast.Node) ast.Visitor {
 	switch n := node.(type) {

@@ -501,16 +501,9 @@ func (c *Context) instrumentPackages() {
 			f.Comments = trimComments(f, pkg.Fset)
 
 			buf := new(bytes.Buffer)
-			content := c.readFile(fullName)
-			buf.Write(initialComments(content)) // Retain '// +build' directives.
 			instrument(pkg.PkgPath, fullName, pkg.Fset, f, pkg.TypesInfo, buf)
-			tmp := c.tempFile()
-			c.writeFile(tmp, buf.Bytes())
 			outpath := filepath.Join(path, fname)
-			if runtime.GOOS == "windows" {
-				os.Remove(outpath)
-			}
-			c.moveFile(tmp, outpath)
+			c.writeFile(outpath, buf.Bytes())
 		}
 	}
 
