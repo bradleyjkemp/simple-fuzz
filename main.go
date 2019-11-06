@@ -109,8 +109,6 @@ type Context struct {
 	workdir string
 	GOROOT  string
 	GOPATH  string
-
-	cmdGoHasTrimPath bool // does the active version of cmd/go have the -trimpath flag?
 }
 
 // getEnv determines GOROOT and GOPATH and updates c accordingly.
@@ -134,12 +132,6 @@ func (c *Context) getEnv() {
 	}
 	c.GOROOT = env["GOROOT"]
 	c.GOPATH = env["GOPATH"]
-
-	out, err := exec.Command("go", "list", "-f", "'{{context.ReleaseTags}}'", "runtime").CombinedOutput()
-	if err != nil || len(out) == 0 {
-		c.failf("go list -f '{{context.ReleaseTags}}' runtime returned '%s' (%v)", out, err)
-	}
-	c.cmdGoHasTrimPath = bytes.Contains(out, []byte("go1.13"))
 }
 
 // loadPkg loads, parses, and typechecks pkg (the package containing the Fuzz function),
@@ -359,16 +351,13 @@ func (c *Context) populateWorkdir() {
 func (c *Context) buildInstrumentedBinary() {
 	c.instrumentPackages()
 	mainPkg := c.createFuzzMain()
-	args := []string{"build"}
+	args := []string{"build", "-trimpath"}
 	if *flagBuildX {
 		args = append(args, "-x")
 
 		if *flagWork {
 			args = append(args, "-work")
 		}
-	}
-	if c.cmdGoHasTrimPath {
-		args = append(args, "-trimpath")
 	}
 	args = append(args, "-o", *flagOut, mainPkg)
 	cmd := exec.Command("go", args...)
