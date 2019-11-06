@@ -1,6 +1,6 @@
 // Package gofuzzdep contains the business logic used to monitor the fuzzing.
 //
-// It is handled specially by go-fuzz-build; see the comments in package go-fuzz-defs.
+// It is handled specially by go-fuzz-build; see the comments in package go-fuzz-coverage.
 //
 // Be particularly careful about adding imports to go-fuzz-dep:
 // Any package imported by go-fuzz-dep cannot be instrumented (on pain of import cycles),

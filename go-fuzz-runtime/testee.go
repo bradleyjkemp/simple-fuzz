@@ -16,7 +16,7 @@ import (
 	"time"
 	"unsafe"
 
-	. "github.com/bradleyjkemp/simple-fuzz/go-fuzz-defs"
+	. "github.com/bradleyjkemp/simple-fuzz/go-fuzz-coverage"
 )
 
 // Testee is a wrapper around one testee subprocess.

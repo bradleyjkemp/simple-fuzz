@@ -6,7 +6,7 @@ package gofuzzdep
 import (
 	"log"
 
-	. "github.com/bradleyjkemp/simple-fuzz/go-fuzz-defs"
+	. "github.com/bradleyjkemp/simple-fuzz/go-fuzz-coverage"
 )
 
 func makeCopy(data []byte) []byte {

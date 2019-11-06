@@ -26,7 +26,7 @@ func instrument(pkg, fullName string, fset *token.FileSet, parsedFile *ast.File,
 		astFile:  parsedFile,
 		info:     info,
 	}
-	file.addImport("go-fuzz-runtime", fuzzdepPkg, "CoverTab")
+	file.addImport("go-fuzz-coverage", fuzzdepPkg, "CoverTab")
 	ast.Walk(file, file.astFile)
 	file.print(out)
 }
@@ -61,7 +61,7 @@ func (lc *LiteralCollector) Visit(n ast.Node) (w ast.Visitor) {
 		switch nn.Kind {
 		case token.CHAR:
 			// Conver 'a' -> "a"
-			lit = fmt.Sprintf("\"%c\"", lit[1])
+			lit = strconv.Quote(fmt.Sprintf("%c", lit[1]))
 			fallthrough
 		case token.STRING:
 			lc.lits[lit] = struct{}{}

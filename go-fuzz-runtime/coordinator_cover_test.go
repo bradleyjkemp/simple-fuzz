@@ -6,7 +6,7 @@ package gofuzzdep
 import (
 	"testing"
 
-	. "github.com/bradleyjkemp/simple-fuzz/go-fuzz-defs"
+	. "github.com/bradleyjkemp/simple-fuzz/go-fuzz-coverage"
 )
 
 func BenchmarkCompareCoverBody(b *testing.B) {

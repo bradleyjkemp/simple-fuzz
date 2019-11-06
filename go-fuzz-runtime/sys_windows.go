@@ -7,7 +7,7 @@ import (
 	"syscall"
 	"unsafe"
 
-	. "github.com/bradleyjkemp/simple-fuzz/go-fuzz-defs"
+	. "github.com/bradleyjkemp/simple-fuzz/go-fuzz-coverage"
 )
 
 // Can't import reflect because of import cycles.

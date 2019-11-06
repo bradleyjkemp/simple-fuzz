@@ -459,27 +459,27 @@ func (c *Context) gatherLiterals() []string {
 func (c *Context) copyFuzzDep() {
 	// Standard library packages can't depend on non-standard ones.
 	// So we pretend that go-fuzz-dep is a standard one.
-	// go-fuzz-dep depends on go-fuzz-defs, which creates a problem.
-	// Fortunately (and intentionally), go-fuzz-defs contains only constants,
+	// go-fuzz-dep depends on go-fuzz-coverage, which creates a problem.
+	// Fortunately (and intentionally), go-fuzz-coverage contains only constants,
 	// which can be duplicated safely.
-	// So we eliminate the import statement and copy go-fuzz-defs/defs.go
+	// So we eliminate the import statement and copy go-fuzz-coverage/defs.go
 	// directly into the go-fuzz-dep package.
-	newDir := filepath.Join(c.workdir, "goroot", "src", "go-fuzz-runtime")
+	newDir := filepath.Join(c.workdir, "gopath", "src", "github.com", "bradleyjkemp", "simple-fuzz", "go-fuzz-runtime")
 	c.mkdirAll(newDir)
 	dep := c.packageNamed("github.com/bradleyjkemp/simple-fuzz/go-fuzz-runtime")
 	for _, f := range dep.GoFiles {
 		data := c.readFile(f)
 		// Eliminate the dot import.
-		data = bytes.Replace(data, []byte(`. "github.com/bradleyjkemp/simple-fuzz/go-fuzz-defs"`), nil, -1)
+		data = bytes.Replace(data, []byte(`. "github.com/bradleyjkemp/simple-fuzz/go-fuzz-coverage"`), []byte(`. "go-fuzz-coverage"`), -1)
 		c.writeFile(filepath.Join(newDir, filepath.Base(f)), data)
 	}
 
-	defs := c.packageNamed("github.com/bradleyjkemp/simple-fuzz/go-fuzz-defs")
+	newDir = filepath.Join(c.workdir, "goroot", "src", "go-fuzz-coverage")
+	c.mkdirAll(newDir)
+	defs := c.packageNamed("github.com/bradleyjkemp/simple-fuzz/go-fuzz-coverage")
 	for _, f := range defs.GoFiles {
 		data := c.readFile(f)
-		// Adjust package name to match go-fuzz-deps.
-		data = bytes.Replace(data, []byte("\npackage base"), []byte("\npackage gofuzzdep"), -1)
-		c.writeFile(filepath.Join(newDir, "defs.go"), data)
+		c.writeFile(filepath.Join(newDir, filepath.Base(f)), data)
 	}
 }
 
@@ -686,7 +686,7 @@ package main
 
 import (
 	target "{{.Pkg}}"
-	dep "go-fuzz-runtime"
+	dep "github.com/bradleyjkemp/simple-fuzz/go-fuzz-runtime"
 	"flag"
 )
 
@@ -696,7 +696,8 @@ var (
 
 var (
 	literals = []string{
-		{{range .Literals}}{{.}},{{end}}
+		{{range .Literals}}{{.}},
+{{end}}
 	}
 )
 

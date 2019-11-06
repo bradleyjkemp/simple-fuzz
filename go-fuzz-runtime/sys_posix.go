@@ -8,7 +8,7 @@ package gofuzzdep
 import (
 	"syscall"
 
-	. "github.com/bradleyjkemp/simple-fuzz/go-fuzz-defs"
+	. "github.com/bradleyjkemp/simple-fuzz/go-fuzz-coverage"
 )
 
 type FD int
