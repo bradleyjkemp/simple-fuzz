@@ -17,7 +17,6 @@ import (
 	"os/exec"
 	"path/filepath"
 	"runtime"
-	"runtime/pprof"
 	"strings"
 	"text/template"
 	"unicode"
@@ -30,7 +29,6 @@ var (
 	flagOut      = flag.String("o", "", "output file")
 	flagFunc     = flag.String("func", "", "preferred entry function")
 	flagWork     = flag.Bool("work", false, "don't remove working directory")
-	flagCPU      = flag.Bool("cpuprofile", false, "generate cpu profile in cpu.pprof")
 	flagBuildX   = flag.Bool("x", false, "print the commands if build fails")
 	flagPreserve = flag.String("preserve", "", "a comma-separated list of import paths not to instrument")
 )
@@ -67,7 +65,6 @@ func main() {
 		c.failf("provided -func=%v, but %v is not a fuzz function name", *flagFunc, *flagFunc)
 	}
 
-	c.startProfiling()  // start pprof as requested
 	c.loadPkg(pkg)      // load and typecheck pkg
 	c.getEnv()          // discover GOROOT, GOPATH
 	c.loadStd()         // load standard library
@@ -113,8 +110,6 @@ type Context struct {
 	GOROOT  string
 	GOPATH  string
 
-	cpuprofile *os.File
-
 	cmdGoHasTrimPath bool // does the active version of cmd/go have the -trimpath flag?
 }
 
@@ -145,19 +140,6 @@ func (c *Context) getEnv() {
 		c.failf("go list -f '{{context.ReleaseTags}}' runtime returned '%s' (%v)", out, err)
 	}
 	c.cmdGoHasTrimPath = bytes.Contains(out, []byte("go1.13"))
-}
-
-// startProfiling starts pprof profiling, if requested.
-func (c *Context) startProfiling() {
-	if !*flagCPU {
-		return
-	}
-	var err error
-	c.cpuprofile, err = os.Create("cpu.pprof")
-	if err != nil {
-		c.failf("could not create cpu profile: %v", err)
-	}
-	pprof.StartCPUProfile(c.cpuprofile)
 }
 
 // loadPkg loads, parses, and typechecks pkg (the package containing the Fuzz function),
@@ -340,10 +322,6 @@ func (c *Context) makeWorkdir() {
 func (c *Context) cleanup() {
 	if !*flagWork && c.workdir != "" {
 		os.RemoveAll(c.workdir)
-	}
-	if c.cpuprofile != nil {
-		pprof.StopCPUProfile()
-		c.cpuprofile.Close()
 	}
 }
 
