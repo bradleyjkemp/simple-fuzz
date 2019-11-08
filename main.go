@@ -168,7 +168,7 @@ func (c *Context) loadPkg(pkg string) {
 	// * the target package, obviously
 	// * go-fuzz-runtime, since we use it for instrumentation
 	// * reflect, if we are using libfuzzer, since its generated main function requires it
-	loadpkgs := []string{pkg, "github.com/bradleyjkemp/simple-fuzz/go-fuzz-runtime"}
+	loadpkgs := []string{pkg, "github.com/bradleyjkemp/simple-fuzz/runtime"}
 	initial, err := packages.Load(cfg, loadpkgs...)
 	if err != nil {
 		c.failf("could not load packages: %v", err)
@@ -349,7 +349,7 @@ func (c *Context) calcIgnore() {
 	// noisy (because they are low level), and/or not interesting.
 	// We could manually maintain this list, but that makes go-fuzz-build
 	// fragile in the face of internal standard library package changes.
-	roots := c.packagesNamed("runtime", "github.com/bradleyjkemp/simple-fuzz/go-fuzz-runtime")
+	roots := c.packagesNamed("runtime", "github.com/bradleyjkemp/simple-fuzz/runtime")
 	packages.Visit(roots, func(p *packages.Package) bool {
 		c.ignore[p.PkgPath] = true
 		return true
@@ -370,19 +370,19 @@ func (c *Context) copyFuzzDep() {
 	// which can be duplicated safely.
 	// So we eliminate the import statement and copy go-fuzz-coverage/defs.go
 	// directly into the go-fuzz-dep package.
-	newDir := filepath.Join(c.workdir, "gopath", "src", "github.com", "bradleyjkemp", "simple-fuzz", "go-fuzz-runtime")
+	newDir := filepath.Join(c.workdir, "gopath", "src", "github.com", "bradleyjkemp", "simple-fuzz", "runtime")
 	c.mkdirAll(newDir)
-	dep := c.packageNamed("github.com/bradleyjkemp/simple-fuzz/go-fuzz-runtime")
+	dep := c.packageNamed("github.com/bradleyjkemp/simple-fuzz/runtime")
 	for _, f := range dep.GoFiles {
 		data := c.readFile(f)
 		// Eliminate the dot import.
-		data = bytes.Replace(data, []byte(`. "github.com/bradleyjkemp/simple-fuzz/go-fuzz-coverage"`), []byte(`. "go-fuzz-coverage"`), -1)
+		data = bytes.Replace(data, []byte(`. "github.com/bradleyjkemp/simple-fuzz/coverage"`), []byte(`. "coverage"`), -1)
 		c.writeFile(filepath.Join(newDir, filepath.Base(f)), data)
 	}
 
-	newDir = filepath.Join(c.workdir, "goroot", "src", "go-fuzz-coverage")
+	newDir = filepath.Join(c.workdir, "goroot", "src", "coverage")
 	c.mkdirAll(newDir)
-	defs := c.packageNamed("github.com/bradleyjkemp/simple-fuzz/go-fuzz-coverage")
+	defs := c.packageNamed("github.com/bradleyjkemp/simple-fuzz/coverage")
 	for _, f := range defs.GoFiles {
 		data := c.readFile(f)
 		c.writeFile(filepath.Join(newDir, filepath.Base(f)), data)
@@ -554,7 +554,7 @@ package main
 
 import (
 	target "{{.Pkg}}"
-	dep "github.com/bradleyjkemp/simple-fuzz/go-fuzz-runtime"
+	dep "github.com/bradleyjkemp/simple-fuzz/runtime"
 	"flag"
 )
 

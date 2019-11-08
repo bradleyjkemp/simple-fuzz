@@ -9,7 +9,7 @@ import (
 	"time"
 	"unsafe"
 
-	. "github.com/bradleyjkemp/simple-fuzz/go-fuzz-coverage"
+	. "github.com/bradleyjkemp/simple-fuzz/coverage"
 )
 
 func RunnerMain(fns []func([]byte) int) {

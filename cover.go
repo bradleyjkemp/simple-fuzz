@@ -25,7 +25,7 @@ func instrument(pkg, fullName string, fset *token.FileSet, parsedFile *ast.File,
 		astFile:  parsedFile,
 		info:     info,
 	}
-	file.addImport("go-fuzz-coverage", fuzzdepPkg, "CoverTab")
+	file.addImport("coverage", fuzzdepPkg, "CoverTab")
 	ast.Inspect(file.astFile, instrumentAST)
 	file.print(out)
 }
