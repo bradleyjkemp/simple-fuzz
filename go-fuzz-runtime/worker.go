@@ -185,11 +185,14 @@ func (w *Coordinator) minimizeInput(data []byte, canonicalize bool, pred func(ca
 	res := make([]byte, len(data))
 	copy(res, data)
 	start := time.Now()
+	shouldStopMinimizing := func() bool {
+		return time.Since(start) > *flagMinimize || shutdown.Err() != nil
+	}
 
 	// First, try to cut tail.
 	for n := 1024; n != 0; n /= 2 {
 		for len(res) > n {
-			if time.Since(start) > *flagMinimize {
+			if shouldStopMinimizing() {
 				return res
 			}
 			candidate := res[:len(res)-n]
@@ -205,7 +208,7 @@ func (w *Coordinator) minimizeInput(data []byte, canonicalize bool, pred func(ca
 	// Then, try to remove each individual byte.
 	tmp := make([]byte, len(res))
 	for i := 0; i < len(res); i++ {
-		if time.Since(start) > *flagMinimize {
+		if shouldStopMinimizing() {
 			return res
 		}
 		candidate := tmp[:len(res)-1]
@@ -224,7 +227,7 @@ func (w *Coordinator) minimizeInput(data []byte, canonicalize bool, pred func(ca
 	for i := 0; i < len(res)-1; i++ {
 		copy(tmp, res[:i])
 		for j := len(res); j > i+1; j-- {
-			if time.Since(start) > *flagMinimize {
+			if shouldStopMinimizing() {
 				return res
 			}
 			candidate := tmp[:len(res)-j+i]
@@ -245,7 +248,7 @@ func (w *Coordinator) minimizeInput(data []byte, canonicalize bool, pred func(ca
 			if res[i] == '0' {
 				continue
 			}
-			if time.Since(start) > *flagMinimize {
+			if shouldStopMinimizing() {
 				return res
 			}
 			candidate := tmp[:len(res)]
