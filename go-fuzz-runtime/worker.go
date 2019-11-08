@@ -39,11 +39,7 @@ func (w *Coordinator) workerLoop() {
 		if *flagV >= 1 {
 			log.Printf("worker loop crasherQueue=%d triageQueue=%d", len(w.crasherQueue), len(w.triageQueue))
 		}
-
-		if time.Since(w.lastSync) > syncPeriod {
-			w.broadcastStats()
-			w.lastSync = time.Now()
-		}
+		w.broadcastStats()
 
 		if len(w.crasherQueue) > 0 {
 			n := len(w.crasherQueue) - 1
@@ -145,12 +141,6 @@ func (w *Coordinator) processCrasher(crash NewCrasherArgs) {
 	// Hanging inputs can take very long time to minimize.
 	if !crash.Hanging {
 		crash.Data = w.minimizeInput(crash.Data, true, func(candidate, cover, output []byte, res int, crashed, hanged bool) bool {
-			// Minimizing takes a long time so need to keep the regular logs
-			if time.Since(w.lastSync) > syncPeriod {
-				w.broadcastStats()
-				w.lastSync = time.Now()
-			}
-
 			if !crashed {
 				return false
 			}
@@ -186,6 +176,7 @@ func (w *Coordinator) minimizeInput(data []byte, canonicalize bool, pred func(ca
 	copy(res, data)
 	start := time.Now()
 	shouldStopMinimizing := func() bool {
+		w.broadcastStats()
 		return time.Since(start) > *flagMinimize || shutdown.Err() != nil
 	}
 

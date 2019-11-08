@@ -42,6 +42,10 @@ type Coordinator struct {
 }
 
 func (c *Coordinator) broadcastStats() {
+	if time.Since(c.lastSync) < syncPeriod {
+		return
+	}
+	c.lastSync = time.Now()
 	corpus := uint64(len(c.corpus.m))
 	crashers := uint64(len(c.crashers.m))
 	uptime := time.Since(c.startTime).Truncate(time.Second)
