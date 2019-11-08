@@ -33,27 +33,41 @@ func instrument(pkg, fullName string, fset *token.FileSet, parsedFile *ast.File,
 func instrumentAST(node ast.Node) bool {
 	switch n := node.(type) {
 	case *ast.IfStmt:
-		// Add counter to the start of the if block
-		n.Body.List = append([]ast.Stmt{newCounter()}, n.Body.List...)
-
-		// Make sure else statement exists
-		if n.Else == nil {
-			n.Else = &ast.BlockStmt{
-				List: nil,
-			}
-		}
-		// Add counter to else statement
-		elseStmt := n.Else.(*ast.BlockStmt)
-		elseStmt.List = append([]ast.Stmt{newCounter()}, elseStmt.List...)
-
-		// recurse into the child nodes
-		return true
+		instrumentIf(n)
 
 	case *ast.FuncDecl:
+		if n.Body == nil {
+			// this is just a function declaration, it is implemented elsewhere
+			return false
+		}
 		n.Body.List = append([]ast.Stmt{newCounter()}, n.Body.List...)
 	}
 
 	return true
+}
+
+func instrumentIf(n *ast.IfStmt) bool {
+	// Add counter to the start of the if block
+	n.Body.List = append([]ast.Stmt{newCounter()}, n.Body.List...)
+
+	// Make sure else statement exists
+	if n.Else == nil {
+		n.Else = &ast.BlockStmt{
+			List: nil,
+		}
+	}
+
+	switch e := n.Else.(type) {
+	case *ast.BlockStmt:
+		// Add counter to else statement
+		e.List = append([]ast.Stmt{newCounter()}, e.List...)
+		return true
+	case *ast.IfStmt:
+		// Recurse to cover the else-if
+		return instrumentIf(e)
+	default:
+		panic("unexpected else type")
+	}
 }
 
 func trimComments(file *ast.File, fset *token.FileSet) []*ast.CommentGroup {
