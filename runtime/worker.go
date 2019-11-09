@@ -7,7 +7,6 @@ import (
 	"bufio"
 	"bytes"
 	"log"
-	"os"
 	"strings"
 	"time"
 
@@ -23,53 +22,6 @@ type Input struct {
 	data      []byte
 	cover     []byte
 	res       int
-}
-
-func newWorker(c *Coordinator) {
-	c.corpusSigs = make(map[Sig]struct{})
-
-	c.maxCover = make([]byte, CoverSize)
-
-	c.mutator = newMutator()
-	c.coverBin = newTestBinary(os.Args[0], &c.execs, &c.restarts, 0)
-}
-
-func (w *Coordinator) workerLoop() {
-	for shutdown.Err() == nil {
-		if *flagV >= 1 {
-			log.Printf("worker loop crasherQueue=%d triageQueue=%d", len(w.crasherQueue), len(w.triageQueue))
-		}
-		w.broadcastStats()
-
-		if len(w.crasherQueue) > 0 {
-			n := len(w.crasherQueue) - 1
-			crash := w.crasherQueue[n]
-			w.crasherQueue[n] = NewCrasherArgs{}
-			w.crasherQueue = w.crasherQueue[:n]
-			if *flagV >= 2 {
-				log.Printf("worker processes crasher [%v]%x", len(crash.Data), hash(crash.Data))
-			}
-			w.processCrasher(crash)
-			continue
-		}
-
-		if len(w.triageQueue) > 0 {
-			n := len(w.triageQueue) - 1
-			input := w.triageQueue[n]
-			w.triageQueue[n] = Input{}
-			w.triageQueue = w.triageQueue[:n]
-			if *flagV >= 2 {
-				log.Printf("worker triages local input [%v]%x minimized=%v", len(input.data), hash(input.data), input.minimized)
-			}
-			w.triageInput(input)
-			continue
-		}
-
-		// Plain old blind fuzzing.
-		data := w.mutator.generate(w.corpusInputs, w.intLits, w.strLits)
-		w.testInput(data)
-	}
-	w.shutdown()
 }
 
 // triageInput processes every new input.
@@ -342,14 +294,4 @@ func extractSuppression(out []byte) []byte {
 		supp = out
 	}
 	return supp
-}
-
-func (hub *Coordinator) updateMaxCover(cover []byte) bool {
-	if !compareCover(hub.maxCover, cover) {
-		return false
-	}
-	maxCover := makeCopy(hub.maxCover)
-	updateMaxCover(maxCover, cover)
-	hub.maxCover = maxCover
-	return true
 }

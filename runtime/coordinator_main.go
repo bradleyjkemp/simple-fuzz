@@ -15,6 +15,8 @@ import (
 	"runtime/debug"
 	"syscall"
 	"time"
+
+	. "github.com/bradleyjkemp/simple-fuzz/coverage"
 )
 
 var (
@@ -63,7 +65,13 @@ func CoordinatorMain(literals []string) {
 		w.intLits = append(w.intLits, []byte(lit))
 	}
 
-	newWorker(w)
+	w.corpusSigs = make(map[Sig]struct{})
+
+	w.maxCover = make([]byte, CoverSize)
+
+	w.mutator = newMutator()
+	w.coverBin = newTestBinary(os.Args[0], &w.execs, &w.restarts, 0)
+
 	// Give the worker initial corpus.
 	for _, a := range w.corpus.m {
 		w.triageQueue = append(w.triageQueue, Input{data: a.data, minimized: !a.user})
