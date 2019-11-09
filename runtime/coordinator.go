@@ -15,8 +15,7 @@ type Coordinator struct {
 	corpusInputs   []Input
 	badInputs      map[Sig]struct{}
 	suppressedSigs map[Sig]struct{}
-	strLits        [][]byte // string literals in testee
-	intLits        [][]byte // int literals in testee
+	lits           [][]byte // string/int literals in testee
 	maxCover       []byte
 
 	corpusSigs map[Sig]struct{}

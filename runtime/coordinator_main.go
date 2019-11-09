@@ -61,8 +61,7 @@ func CoordinatorMain() {
 
 	// Prepare list of string and integer literals.
 	for _, lit := range Literals {
-		w.strLits = append(w.strLits, []byte(lit))
-		w.intLits = append(w.intLits, []byte(lit))
+		w.lits = append(w.lits, []byte(lit))
 	}
 
 	w.corpusSigs = make(map[Sig]struct{})
@@ -112,7 +111,7 @@ func CoordinatorMain() {
 		}
 
 		// Plain old blind fuzzing.
-		data := w.mutator.generate(w.corpusInputs, w.intLits, w.strLits)
+		data := w.mutator.generate(w.corpusInputs, w.lits)
 		w.testInput(data)
 	}
 	w.shutdown()

@@ -46,7 +46,7 @@ func (m *Mutator) randByteOrder() binary.ByteOrder {
 	return binary.BigEndian
 }
 
-func (m *Mutator) generate(corpus []Input, intLits, strLits [][]byte) []byte {
+func (m *Mutator) generate(corpus []Input, lits [][]byte) []byte {
 	data := corpus[m.rand(len(corpus))].data
 	res := make([]byte, len(data))
 	copy(res, data)
@@ -345,19 +345,15 @@ func (m *Mutator) generate(corpus []Input, intLits, strLits [][]byte) []byte {
 		case 18:
 			// Insert a literal.
 			// TODO: encode int literals in big-endian, base-128, etc.
-			if len(intLits) == 0 && len(strLits) == 0 {
+			if len(lits) == 0 {
 				iter--
 				continue
 			}
-			var lit []byte
-			if len(strLits) != 0 && m.bool() {
-				lit = []byte(strLits[m.rand(len(strLits))])
-			} else {
-				lit = intLits[m.rand(len(intLits))]
-				if m.rand(3) == 0 {
-					lit = reverse(lit)
-				}
+			lit := lits[m.rand(len(lits))]
+			if m.rand(3) == 0 {
+				lit = reverse(lit)
 			}
+
 			pos := m.rand(len(res) + 1)
 			for i := 0; i < len(lit); i++ {
 				res = append(res, 0)
@@ -366,18 +362,13 @@ func (m *Mutator) generate(corpus []Input, intLits, strLits [][]byte) []byte {
 			copy(res[pos:], lit)
 		case 19:
 			// Replace with literal.
-			if len(intLits) == 0 && len(strLits) == 0 {
+			if len(lits) == 0 {
 				iter--
 				continue
 			}
-			var lit []byte
-			if len(strLits) != 0 && m.bool() {
-				lit = []byte(strLits[m.rand(len(strLits))])
-			} else {
-				lit = intLits[m.rand(len(intLits))]
-				if m.rand(3) == 0 {
-					lit = reverse(lit)
-				}
+			lit := lits[m.rand(len(lits))]
+			if m.rand(3) == 0 {
+				lit = reverse(lit)
 			}
 			if len(lit) >= len(res) {
 				iter--
