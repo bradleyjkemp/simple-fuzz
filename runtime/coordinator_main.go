@@ -30,7 +30,7 @@ var (
 	shutdown context.Context
 )
 
-func CoordinatorMain(literals []string) {
+func CoordinatorMain() {
 	sigChan := make(chan os.Signal, 1)
 	signal.Notify(sigChan, syscall.SIGINT)
 	go func() {
@@ -60,7 +60,7 @@ func CoordinatorMain(literals []string) {
 	}
 
 	// Prepare list of string and integer literals.
-	for _, lit := range literals {
+	for _, lit := range Literals {
 		w.strLits = append(w.strLits, []byte(lit))
 		w.intLits = append(w.intLits, []byte(lit))
 	}

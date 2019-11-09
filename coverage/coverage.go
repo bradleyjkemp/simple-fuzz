@@ -15,3 +15,7 @@ const (
 // It is replaced by a newly initialized array when it is
 // time for actual instrumentation to commence.
 var CoverTab = new([CoverSize]byte)
+
+// These are populated by an init() function generated during build
+var Literals []string
+var FuzzFunctions = map[string]func([]byte) int{}

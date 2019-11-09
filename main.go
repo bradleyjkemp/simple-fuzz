@@ -26,7 +26,6 @@ import (
 
 var (
 	flagOut      = flag.String("o", "", "output file")
-	flagFunc     = flag.String("func", "", "preferred entry function")
 	flagPreserve = flag.String("preserve", "", "a comma-separated list of import paths not to instrument")
 )
 
@@ -57,9 +56,6 @@ func main() {
 	pkg := "."
 	if flag.NArg() == 1 {
 		pkg = flag.Arg(0)
-	}
-	if *flagFunc != "" && !isFuzzFuncName(*flagFunc) {
-		c.failf("provided -func=%v, but %v is not a fuzz function name", *flagFunc, *flagFunc)
 	}
 
 	c.loadPkg(pkg)                // load and typecheck pkg
@@ -95,13 +91,10 @@ func main() {
 
 // Context holds state for a go-fuzz-build run.
 type Context struct {
-	fuzzpkg *packages.Package   // package containing Fuzz function
-	pkgs    []*packages.Package // typechecked root packages
+	pkgs []*packages.Package // typechecked root packages
 
 	std    map[string]bool // set of packages in the standard library
 	ignore map[string]bool // set of packages to ignore during instrumentation
-
-	allFuncs []string // all fuzz functions found in package
 
 	workdir string
 	GOROOT  string
@@ -134,26 +127,6 @@ func (c *Context) getEnv() {
 // loadPkg loads, parses, and typechecks pkg (the package containing the Fuzz function),
 // go-fuzz-dep, and their dependencies.
 func (c *Context) loadPkg(pkg string) {
-	// Resolve pkg.
-	// See https://golang.org/issue/30826 and https://golang.org/issue/30828.
-	rescfg := basePackagesConfig()
-	rescfg.Mode = packages.NeedName
-	respkgs, err := packages.Load(rescfg, pkg)
-	if err != nil {
-		c.failf("could not resolve package %q: %v", pkg, err)
-	}
-	if len(respkgs) != 1 {
-		paths := make([]string, len(respkgs))
-		for i, p := range respkgs {
-			paths[i] = p.PkgPath
-		}
-		c.failf("cannot build multiple packages, but %q resolved to: %v", pkg, strings.Join(paths, ", "))
-	}
-	if respkgs[0].Name == "main" {
-		c.failf("cannot fuzz package main")
-	}
-	pkgpath := respkgs[0].PkgPath
-
 	// Load, parse, and type-check all packages.
 	// We'll use the type information later.
 	// This also provides better error messages in the case
@@ -168,7 +141,7 @@ func (c *Context) loadPkg(pkg string) {
 	// * the target package, obviously
 	// * go-fuzz-runtime, since we use it for instrumentation
 	// * reflect, if we are using libfuzzer, since its generated main function requires it
-	loadpkgs := []string{pkg, "github.com/bradleyjkemp/simple-fuzz/runtime"}
+	loadpkgs := []string{pkg, "github.com/bradleyjkemp/simple-fuzz/runtime", "github.com/bradleyjkemp/simple-fuzz/runner"}
 	initial, err := packages.Load(cfg, loadpkgs...)
 	if err != nil {
 		c.failf("could not load packages: %v", err)
@@ -180,62 +153,6 @@ func (c *Context) loadPkg(pkg string) {
 	}
 
 	c.pkgs = initial
-
-	// Find the fuzz package among c.pkgs.
-	for _, p := range initial {
-		if p.PkgPath == pkgpath {
-			c.fuzzpkg = p
-			break
-		}
-	}
-	if c.fuzzpkg == nil {
-		c.failf("internal error: failed to find fuzz package; please file an issue")
-	}
-
-	// Find all fuzz functions in fuzzpkg.
-	foundFlagFunc := false
-	s := c.fuzzpkg.Types.Scope()
-	for _, n := range s.Names() {
-		if !isFuzzFuncName(n) {
-			continue
-		}
-		// Check that n is a function with an appropriate signature.
-		typ := s.Lookup(n).Type()
-		sig, ok := typ.(*types.Signature)
-		if !ok || sig.Variadic() || !isFuzzSig(sig) {
-			if n == *flagFunc {
-				c.failf("provided -func=%v, but %v is not a fuzz function", *flagFunc, *flagFunc)
-			}
-			continue
-		}
-		// n is a fuzz function.
-		c.allFuncs = append(c.allFuncs, n)
-		foundFlagFunc = foundFlagFunc || n == *flagFunc
-	}
-
-	if len(c.allFuncs) == 0 {
-		c.failf("could not find any fuzz functions in %v", c.fuzzpkg.PkgPath)
-	}
-	if len(c.allFuncs) > 255 {
-		c.failf("go-fuzz-build supports a maximum of 255 fuzz functions, found %v; please file an issue", len(c.allFuncs))
-	}
-
-	if *flagFunc != "" {
-		// Specific fuzz function requested.
-		// If the requested function doesn't exist, fail.
-		if !foundFlagFunc {
-			c.failf("could not find fuzz function %v in %v", *flagFunc, c.fuzzpkg.PkgPath)
-		}
-	} else {
-		// No specific fuzz function requested.
-		// If there's only one fuzz function, mark it as preferred.
-		// If there's more than one...
-		//   ...for go-fuzz, that's fine; one can be specified later on the command line.
-		//   ...for libfuzzer, that's not fine, as there is no way to specify one later.
-		if len(c.allFuncs) == 1 {
-			*flagFunc = c.allFuncs[0]
-		}
-	}
 }
 
 // isFuzzSig reports whether sig is of the form
@@ -319,13 +236,12 @@ func (c *Context) populateWorkdir() {
 	packages.Visit(c.pkgs, nil, func(p *packages.Package) {
 		c.clonePackage(p)
 	})
-	c.copyFuzzDep()
 }
 
 func (c *Context) buildInstrumentedBinary() {
-	c.instrumentPackages()
-	mainPkg := c.createFuzzMain()
-	cmd := exec.Command("go", "build", "-trimpath", "-o", *flagOut, mainPkg)
+	fuzzPackages := c.instrumentPackages()
+	c.copyFuzzDep(fuzzPackages)
+	cmd := exec.Command("go", "build", "-trimpath", "-o", *flagOut, "github.com/bradleyjkemp/simple-fuzz/runner")
 	cmd.Env = append(os.Environ(),
 		"GOROOT="+filepath.Join(c.workdir, "goroot"),
 		"GOPATH="+filepath.Join(c.workdir, "gopath"),
@@ -362,7 +278,7 @@ func (c *Context) calcIgnore() {
 	}
 }
 
-func (c *Context) copyFuzzDep() {
+func (c *Context) copyFuzzDep(fuzzPackages []string) {
 	// Standard library packages can't depend on non-standard ones.
 	// So we pretend that go-fuzz-dep is a standard one.
 	// go-fuzz-dep depends on go-fuzz-coverage, which creates a problem.
@@ -370,37 +286,47 @@ func (c *Context) copyFuzzDep() {
 	// which can be duplicated safely.
 	// So we eliminate the import statement and copy go-fuzz-coverage/defs.go
 	// directly into the go-fuzz-dep package.
-	newDir := filepath.Join(c.workdir, "gopath", "src", "github.com", "bradleyjkemp", "simple-fuzz", "runtime")
-	c.mkdirAll(newDir)
+	runtimeDir := filepath.Join(c.workdir, "gopath", "src", "github.com", "bradleyjkemp", "simple-fuzz", "runtime")
+	c.mkdirAll(runtimeDir)
 	dep := c.packageNamed("github.com/bradleyjkemp/simple-fuzz/runtime")
 	for _, f := range dep.GoFiles {
 		data := c.readFile(f)
 		// Eliminate the dot import.
 		data = bytes.Replace(data, []byte(`. "github.com/bradleyjkemp/simple-fuzz/coverage"`), []byte(`. "coverage"`), -1)
-		c.writeFile(filepath.Join(newDir, filepath.Base(f)), data)
+		c.writeFile(filepath.Join(runtimeDir, filepath.Base(f)), data)
 	}
 
-	newDir = filepath.Join(c.workdir, "goroot", "src", "coverage")
-	c.mkdirAll(newDir)
+	runner := c.packageNamed("github.com/bradleyjkemp/simple-fuzz/runner")
+	runnerDir := filepath.Join(c.workdir, "gopath", "src", "github.com", "bradleyjkemp", "simple-fuzz", "runner")
+	c.mkdirAll(runnerDir)
+	for _, f := range runner.GoFiles {
+		data := c.readFile(f)
+		// Eliminate the dot import.
+		data = bytes.Replace(data, []byte(`. "github.com/bradleyjkemp/simple-fuzz/coverage"`), []byte(`. "coverage"`), -1)
+		c.writeFile(filepath.Join(runnerDir, filepath.Base(f)), data)
+	}
+	// Runner also needs to import all packages containing a fuzz function
+	imports := &bytes.Buffer{}
+	err := importsTmpl.Execute(imports, fuzzPackages)
+	if err != nil {
+		c.failf("failed to execute literals template: %v", err)
+	}
+	c.writeFile(filepath.Join(runnerDir, "imports.go"), imports.Bytes())
+
+	coverageDir := filepath.Join(c.workdir, "goroot", "src", "coverage")
+	c.mkdirAll(coverageDir)
 	defs := c.packageNamed("github.com/bradleyjkemp/simple-fuzz/coverage")
 	for _, f := range defs.GoFiles {
 		data := c.readFile(f)
-		c.writeFile(filepath.Join(newDir, filepath.Base(f)), data)
+		c.writeFile(filepath.Join(coverageDir, filepath.Base(f)), data)
 	}
-}
-
-func (c *Context) createFuzzMain() string {
-	mainPkg := filepath.Join(c.fuzzpkg.PkgPath, "go.fuzz.main")
-	path := filepath.Join(c.workdir, "gopath", "src", mainPkg)
-	c.mkdirAll(path)
-
-	dot := map[string]interface{}{"Pkg": c.fuzzpkg.PkgPath, "AllFuncs": c.allFuncs, "DefaultFunc": *flagFunc, "Literals": c.gatherLiterals()}
-	buf := new(bytes.Buffer)
-	if err := mainSrc.Execute(buf, dot); err != nil {
-		c.failf("could not execute template: %v", err)
+	// Now write the generated files that will populate Literals and Funcs
+	lits := &bytes.Buffer{}
+	err = literalsTmpl.Execute(lits, c.gatherLiterals())
+	if err != nil {
+		c.failf("failed to execute literals template: %v", err)
 	}
-	c.writeFile(filepath.Join(path, "main.go"), buf.Bytes())
-	return mainPkg
+	c.writeFile(filepath.Join(coverageDir, "literals.go"), lits.Bytes())
 }
 
 func (c *Context) clonePackage(p *packages.Package) {
@@ -459,7 +385,8 @@ func (c *Context) packagesNamed(paths ...string) (pkgs []*packages.Package) {
 	return pkgs
 }
 
-func (c *Context) instrumentPackages() {
+func (c *Context) instrumentPackages() []string {
+	var fuzzTargets []string
 	visit := func(pkg *packages.Package) {
 		if c.ignore[pkg.PkgPath] {
 			return
@@ -487,6 +414,13 @@ func (c *Context) instrumentPackages() {
 			f.Comments = trimComments(f, pkg.Fset)
 
 			buf := new(bytes.Buffer)
+			if registerFuzzFuncs(pkg.PkgPath, f) {
+				if !strings.Contains(pkg.PkgPath, "/internal/") {
+					// Internal packages cannot be imported directly by the runner
+					// TODO: do some more codegen here to make that possible
+					fuzzTargets = append(fuzzTargets, pkg.PkgPath)
+				}
+			}
 			instrument(pkg.PkgPath, fullName, pkg.Fset, f, pkg.TypesInfo, buf)
 			outpath := filepath.Join(path, fname)
 			c.writeFile(outpath, buf.Bytes())
@@ -494,6 +428,81 @@ func (c *Context) instrumentPackages() {
 	}
 
 	packages.Visit(c.pkgs, nil, visit)
+	return fuzzTargets
+}
+
+func registerFuzzFuncs(pkg string, f *ast.File) bool {
+	// test if there are any fuzz functions and if so register them with the runtime
+	var fuzzFuncs []ast.Stmt
+	for _, d := range f.Decls {
+		funcDecl, ok := d.(*ast.FuncDecl)
+		if !ok {
+			continue
+		}
+
+		if !isFuzzFuncName(funcDecl.Name.Name) || funcDecl.Recv != nil {
+			// Shouldn't fuzz functions that aren't named FuzzCamelCase
+			// or any method receivers
+			continue
+		}
+
+		params := funcDecl.Type.Params.List
+		if len(params) != 1 {
+			// Doesn't have exactly one parameter
+			continue
+		}
+		param, ok := params[0].Type.(*ast.ArrayType)
+		if !ok || param.Len != nil {
+			// First param needs to be a slice type
+			continue
+		}
+
+		sliceType, ok := param.Elt.(*ast.Ident)
+		if !ok || sliceType.Name != "byte" {
+			// slice type is something odd like []struct{foo string}
+			continue
+		}
+
+		// Generates: fuzzdepPkg.FuzzFunctions[pkg.name] = func
+		fuzzFuncs = append(fuzzFuncs, &ast.AssignStmt{
+			Lhs: []ast.Expr{
+				&ast.IndexExpr{
+					X: &ast.SelectorExpr{
+						X: &ast.Ident{Name: fuzzdepPkg},
+						Sel: &ast.Ident{
+							Name: "FuzzFunctions",
+						},
+					},
+					Index: &ast.BasicLit{
+						Kind:  token.STRING,
+						Value: fmt.Sprintf(`"%s.%s"`, pkg, funcDecl.Name.Name),
+					},
+				},
+			},
+			Tok: token.ASSIGN,
+			Rhs: []ast.Expr{funcDecl.Name},
+		})
+	}
+
+	if len(fuzzFuncs) > 0 {
+		// Add an init() function with all of the individual registrations
+		// Go allows multiple init() functions in the same package/file so
+		// no need to check if one already exists
+		f.Decls = append(f.Decls, &ast.FuncDecl{
+			Name: &ast.Ident{
+				Name: "init",
+			},
+			Type: &ast.FuncType{
+				Params:  &ast.FieldList{},
+				Results: nil,
+			},
+			Body: &ast.BlockStmt{
+				List: fuzzFuncs,
+			},
+		})
+		return true
+	}
+	return false
 }
 
 func (c *Context) copyDir(dir, newDir string) {
@@ -549,37 +558,23 @@ func (c *Context) mkdirAll(dir string) {
 	}
 }
 
-var mainSrc = template.Must(template.New("main").Parse(`
+var importsTmpl = template.Must(template.New("imports").Parse(`
 package main
 
 import (
-	target "{{.Pkg}}"
-	dep "github.com/bradleyjkemp/simple-fuzz/runtime"
-	"flag"
+{{range .}}	_ "{{.}}"
+{{end}}
 )
+`))
 
-var (
-	flagCoordinator = flag.Bool("coordinator", true, "whether this is the coordinator or the runner")
-)
+var literalsTmpl = template.Must(template.New("main").Parse(`
+package coverage
 
-var (
-	literals = []string{
-		{{range .Literals}}{{.}},
+func init() {
+	Literals = []string{
+{{range .}}	{{.}},
 {{end}}
 	}
-)
-
-func main() {
-	flag.Parse()
-	if *flagCoordinator {
-		dep.CoordinatorMain(literals)
-	} else {
-		fns := []func([]byte)int {
-			{{range .AllFuncs}}
-				target.{{.}},
-			{{end}}
-		}
-		dep.RunnerMain(fns)
-	}
 }
+
 `))
