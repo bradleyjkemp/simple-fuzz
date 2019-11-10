@@ -38,6 +38,10 @@ func CoordinatorMain() {
 		shutdown, cancel = context.WithCancel(context.Background())
 		<-sigChan
 		cancel()
+
+		// If this hasn't terminated after a delay then exit with an error
+		<-time.After(time.Second)
+		panic("Failed to respond to SIGINT")
 	}()
 
 	runtime.GOMAXPROCS(runtime.NumCPU())
