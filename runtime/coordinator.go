@@ -1,12 +1,11 @@
 // Copyright 2015 go-fuzz project authors. All rights reserved.
 // Use of this source code is governed by Apache 2 LICENSE that can be found in the LICENSE file.
 
-package gofuzzdep
+package main
 
 import (
 	"bytes"
 	"fmt"
-	"log"
 	"time"
 )
 
@@ -58,7 +57,7 @@ func (c *Coordinator) broadcastStats() {
 
 	execsPerSec := float64(c.execs) * 1e9 / float64(time.Since(startTime))
 	// log to stdout
-	log.Printf("corpus: %v (%v ago), crashers: %v,"+
+	fmt.Printf("corpus: %v (%v ago), crashers: %v,"+
 		" restarts: 1/%v, execs: %v (%.0f/sec), cover: %v, uptime: %v\n",
 		corpus, time.Since(lastNewInputTime).Truncate(time.Second),
 		crashers, restartsDenom, c.execs, execsPerSec, cover,

@@ -141,7 +141,7 @@ func (c *Context) loadPkg(pkg string) {
 	// * the target package, obviously
 	// * go-fuzz-runtime, since we use it for instrumentation
 	// * reflect, if we are using libfuzzer, since its generated main function requires it
-	loadpkgs := []string{pkg, "github.com/bradleyjkemp/simple-fuzz/runtime", "github.com/bradleyjkemp/simple-fuzz/runner"}
+	loadpkgs := []string{pkg, "github.com/bradleyjkemp/simple-fuzz/runtime"}
 	initial, err := packages.Load(cfg, loadpkgs...)
 	if err != nil {
 		c.failf("could not load packages: %v", err)
@@ -241,7 +241,7 @@ func (c *Context) populateWorkdir() {
 func (c *Context) buildInstrumentedBinary() {
 	fuzzPackages := c.instrumentPackages()
 	c.copyFuzzDep(fuzzPackages)
-	cmd := exec.Command("go", "build", "-trimpath", "-o", *flagOut, "github.com/bradleyjkemp/simple-fuzz/runner")
+	cmd := exec.Command("go", "build", "-trimpath", "-o", *flagOut, "github.com/bradleyjkemp/simple-fuzz/runtime")
 	cmd.Env = append(os.Environ(),
 		"GOROOT="+filepath.Join(c.workdir, "goroot"),
 		"GOPATH="+filepath.Join(c.workdir, "gopath"),
@@ -296,22 +296,13 @@ func (c *Context) copyFuzzDep(fuzzPackages []string) {
 		c.writeFile(filepath.Join(runtimeDir, filepath.Base(f)), data)
 	}
 
-	runner := c.packageNamed("github.com/bradleyjkemp/simple-fuzz/runner")
-	runnerDir := filepath.Join(c.workdir, "gopath", "src", "github.com", "bradleyjkemp", "simple-fuzz", "runner")
-	c.mkdirAll(runnerDir)
-	for _, f := range runner.GoFiles {
-		data := c.readFile(f)
-		// Eliminate the dot import.
-		data = bytes.Replace(data, []byte(`. "github.com/bradleyjkemp/simple-fuzz/coverage"`), []byte(`. "coverage"`), -1)
-		c.writeFile(filepath.Join(runnerDir, filepath.Base(f)), data)
-	}
-	// Runner also needs to import all packages containing a fuzz function
+	// Runtime also needs to import all packages containing a fuzz function
 	imports := &bytes.Buffer{}
 	err := importsTmpl.Execute(imports, fuzzPackages)
 	if err != nil {
 		c.failf("failed to execute literals template: %v", err)
 	}
-	c.writeFile(filepath.Join(runnerDir, "imports.go"), imports.Bytes())
+	c.writeFile(filepath.Join(runtimeDir, "imports.go"), imports.Bytes())
 
 	coverageDir := filepath.Join(c.workdir, "goroot", "src", "coverage")
 	c.mkdirAll(coverageDir)

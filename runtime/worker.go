@@ -1,7 +1,7 @@
 // Copyright 2015 go-fuzz project authors. All rights reserved.
 // Use of this source code is governed by Apache 2 LICENSE that can be found in the LICENSE file.
 
-package gofuzzdep
+package main
 
 import (
 	"bytes"
@@ -284,7 +284,7 @@ func extractSuppression(out []byte) []byte {
 		suppression = append(suppression, []byte("\n"+gr.Stack.Calls[3].FullSrcLine())...)
 
 		for _, f := range gr.Stack.Calls[4:] {
-			if f.Func.PkgDotName() == "runtime.(*Coordinator).runFuzzFunc" {
+			if f.Func.PkgDotName() == "main.(*Coordinator).runFuzzFunc" {
 				// no longer in the the test code
 				// TODO: make this less brittle
 				break
