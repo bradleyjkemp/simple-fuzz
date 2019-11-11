@@ -19,12 +19,10 @@ import (
 )
 
 var (
-	flagWorkdir    = flag.String("workdir", ".", "dir with persistent work data")
-	flagTimeout    = flag.Int("timeout", 10, "test timeout, in seconds")
-	flagMinimize   = flag.Duration("minimize", 1*time.Minute, "time limit for input minimization")
-	flagDup        = flag.Bool("dup", false, "collect duplicate crashers")
-	flagTestOutput = flag.Bool("testoutput", false, "print test binary output to stdout (for debugging only)")
-	flagV          = flag.Int("v", 0, "verbosity level")
+	flagWorkdir  = flag.String("workdir", ".", "dir with persistent work data")
+	flagMinimize = flag.Duration("minimize", 1*time.Minute, "time limit for input minimization")
+	flagDup      = flag.Bool("dup", false, "collect duplicate crashers")
+	flagV        = flag.Int("v", 0, "verbosity level")
 
 	shutdown context.Context
 )
