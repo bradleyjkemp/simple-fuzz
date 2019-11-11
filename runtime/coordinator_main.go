@@ -47,7 +47,7 @@ func main() {
 
 	*flagWorkdir = expandHomeDir(*flagWorkdir)
 
-	w := &Coordinator{
+	w := &Fuzzer{
 		startTime:      time.Now(),
 		lastInput:      time.Now(),
 		suppressions:   newPersistentSet(filepath.Join(*flagWorkdir, "suppressions")),

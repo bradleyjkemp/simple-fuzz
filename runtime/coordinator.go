@@ -9,8 +9,8 @@ import (
 	"time"
 )
 
-// Coordinator manages persistent fuzzer state like input corpus and crashers.
-type Coordinator struct {
+// Fuzzer manages persistent fuzzer state like input corpus and crashers.
+type Fuzzer struct {
 	corpusInputs   []Input
 	badInputs      map[Sig]struct{}
 	suppressedSigs map[Sig]struct{}
@@ -38,29 +38,29 @@ type Coordinator struct {
 	coverFullness int
 }
 
-func (c *Coordinator) broadcastStats() {
-	if time.Since(c.lastSync) < syncPeriod {
+func (f *Fuzzer) broadcastStats() {
+	if time.Since(f.lastSync) < syncPeriod {
 		return
 	}
-	c.lastSync = time.Now()
-	corpus := uint64(len(c.corpus.m))
-	crashers := uint64(len(c.crashers.m))
-	uptime := time.Since(c.startTime).Truncate(time.Second)
-	startTime := c.startTime
-	lastNewInputTime := c.lastInput
-	cover := uint64(c.coverFullness)
+	f.lastSync = time.Now()
+	corpus := uint64(len(f.corpus.m))
+	crashers := uint64(len(f.crashers.m))
+	uptime := time.Since(f.startTime).Truncate(time.Second)
+	startTime := f.startTime
+	lastNewInputTime := f.lastInput
+	cover := uint64(f.coverFullness)
 
 	var restartsDenom uint64
-	if c.execs != 0 && c.restarts != 0 {
-		restartsDenom = c.execs / c.restarts
+	if f.execs != 0 && f.restarts != 0 {
+		restartsDenom = f.execs / f.restarts
 	}
 
-	execsPerSec := float64(c.execs) * 1e9 / float64(time.Since(startTime))
+	execsPerSec := float64(f.execs) * 1e9 / float64(time.Since(startTime))
 	// log to stdout
 	fmt.Printf("corpus: %v (%v ago), crashers: %v,"+
 		" restarts: 1/%v, execs: %v (%.0f/sec), cover: %v, uptime: %v\n",
 		corpus, time.Since(lastNewInputTime).Truncate(time.Second),
-		crashers, restartsDenom, c.execs, execsPerSec, cover,
+		crashers, restartsDenom, f.execs, execsPerSec, cover,
 		uptime,
 	)
 }
@@ -73,11 +73,11 @@ type NewCrasherArgs struct {
 }
 
 // NewCrasher saves new crasher input on coordinator.
-func (c *Coordinator) NewCrasher(a NewCrasherArgs) {
-	if !*flagDup && !c.suppressions.add(Artifact{a.Suppression, false}) {
+func (f *Fuzzer) NewCrasher(a NewCrasherArgs) {
+	if !*flagDup && !f.suppressions.add(Artifact{a.Suppression, false}) {
 		return // Already have this.
 	}
-	if !c.crashers.add(Artifact{a.Data, false}) {
+	if !f.crashers.add(Artifact{a.Data, false}) {
 		return // Already have this.
 	}
 
@@ -94,6 +94,6 @@ func (c *Coordinator) NewCrasher(a NewCrasherArgs) {
 		}
 		fmt.Fprintf(&buf, "\n")
 	}
-	c.crashers.addDescription(a.Data, buf.Bytes(), "quoted")
-	c.crashers.addDescription(a.Data, a.Error, "output")
+	f.crashers.addDescription(a.Data, buf.Bytes(), "quoted")
+	f.crashers.addDescription(a.Data, a.Error, "output")
 }
