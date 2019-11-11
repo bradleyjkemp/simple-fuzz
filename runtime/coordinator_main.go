@@ -11,7 +11,6 @@ import (
 	"os/signal"
 	"os/user"
 	"path/filepath"
-	"runtime"
 	"runtime/debug"
 	"syscall"
 	"time"
@@ -30,7 +29,7 @@ var (
 	shutdown context.Context
 )
 
-func CoordinatorMain() {
+func CoordinatorMain(fuzzFunc func([]byte) int) {
 	sigChan := make(chan os.Signal, 1)
 	signal.Notify(sigChan, syscall.SIGINT)
 	go func() {
@@ -44,7 +43,6 @@ func CoordinatorMain() {
 		panic("Failed to respond to SIGINT")
 	}()
 
-	runtime.GOMAXPROCS(runtime.NumCPU())
 	debug.SetGCPercent(50) // most memory is in large binary blobs
 
 	*flagWorkdir = expandHomeDir(*flagWorkdir)
@@ -57,6 +55,7 @@ func CoordinatorMain() {
 		corpus:         newPersistentSet(filepath.Join(*flagWorkdir, "corpus")),
 		badInputs:      make(map[Sig]struct{}),
 		suppressedSigs: make(map[Sig]struct{}),
+		fuzzFunc:       fuzzFunc,
 	}
 
 	if len(w.corpus.m) == 0 {
@@ -73,7 +72,6 @@ func CoordinatorMain() {
 	w.maxCover = make([]byte, CoverSize)
 
 	w.mutator = newMutator()
-	w.coverBin = newTestBinary(os.Args[0], &w.execs, &w.restarts, 0)
 
 	// Give the worker initial corpus.
 	for _, a := range w.corpus.m {

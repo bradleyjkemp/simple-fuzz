@@ -44,12 +44,11 @@ func Fuzz(data []byte) int {
 			panic("bingo 0")
 		}
 		if data[0] == '0' || data[0] == '9' {
-			for {
-				c := make(chan bool)
-				close(c)
-			}
+			// TODO: replace this with a hanger
+			panic("hanger")
 		}
 		if data[0] == 'a' || data[0] == 'z' {
+			panic("out of mem")
 			data := make([]byte, 128<<30-1)
 			_ = data
 		}
@@ -82,12 +81,10 @@ func Fuzz(data []byte) int {
 			panic("bingo 1")
 		}
 		if x == 255 || x == 256 {
-			for {
-				c := make(chan bool)
-				close(c)
-			}
+			panic("another hanger")
 		}
 		if x == 1<<16-1 || x == 1<<16 {
+			panic("out of mem")
 			data := make([]byte, 128<<30-1)
 			_ = data
 		}

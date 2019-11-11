@@ -50,7 +50,7 @@ func init() {
 
 func main() {
 	if *flagCoordinator {
-		dep.CoordinatorMain()
+		dep.CoordinatorMain(fuzzFunc)
 	} else {
 		dep.RunnerMain(fuzzFunc)
 	}

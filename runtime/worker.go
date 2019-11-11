@@ -4,13 +4,16 @@
 package gofuzzdep
 
 import (
-	"bufio"
 	"bytes"
+	"fmt"
+	"io/ioutil"
 	"log"
+	"runtime/debug"
 	"strings"
 	"time"
 
 	. "github.com/bradleyjkemp/simple-fuzz/coverage"
+	"github.com/maruel/panicparse/stack"
 )
 
 const (
@@ -32,8 +35,7 @@ func (w *Coordinator) triageInput(input Input) {
 		input.data = input.data[:MaxInputSize]
 	}
 
-	w.execs++
-	res, cover, output, crashed, hanged := w.coverBin.test(input.data)
+	res, cover, output, crashed, hanged := w.runFuzzFunc(input.data)
 	if crashed {
 		// Inputs in corpus should not crash.
 		w.noteCrasher(input.data, output, hanged)
@@ -139,8 +141,7 @@ func (w *Coordinator) minimizeInput(data []byte, canonicalize bool, pred func(ca
 				return res
 			}
 			candidate := res[:len(res)-n]
-			w.execs++
-			result, cover, output, crashed, hanged := w.coverBin.test(candidate)
+			result, cover, output, crashed, hanged := w.runFuzzFunc(candidate)
 			if !pred(candidate, cover, output, result, crashed, hanged) {
 				break
 			}
@@ -157,8 +158,7 @@ func (w *Coordinator) minimizeInput(data []byte, canonicalize bool, pred func(ca
 		candidate := tmp[:len(res)-1]
 		copy(candidate[:i], res[:i])
 		copy(candidate[i:], res[i+1:])
-		w.execs++
-		result, cover, output, crashed, hanged := w.coverBin.test(candidate)
+		result, cover, output, crashed, hanged := w.runFuzzFunc(candidate)
 		if !pred(candidate, cover, output, result, crashed, hanged) {
 			continue
 		}
@@ -175,8 +175,7 @@ func (w *Coordinator) minimizeInput(data []byte, canonicalize bool, pred func(ca
 			}
 			candidate := tmp[:len(res)-j+i]
 			copy(candidate[i:], res[j:])
-			w.execs++
-			result, cover, output, crashed, hanged := w.coverBin.test(candidate)
+			result, cover, output, crashed, hanged := w.runFuzzFunc(candidate)
 			if !pred(candidate, cover, output, result, crashed, hanged) {
 				continue
 			}
@@ -197,8 +196,7 @@ func (w *Coordinator) minimizeInput(data []byte, canonicalize bool, pred func(ca
 			candidate := tmp[:len(res)]
 			copy(candidate, res)
 			candidate[i] = '0'
-			w.execs++
-			result, cover, output, crashed, hanged := w.coverBin.test(candidate)
+			result, cover, output, crashed, hanged := w.runFuzzFunc(candidate)
 			if !pred(candidate, cover, output, result, crashed, hanged) {
 				continue
 			}
@@ -210,15 +208,37 @@ func (w *Coordinator) minimizeInput(data []byte, canonicalize bool, pred func(ca
 }
 
 func (w *Coordinator) testInput(data []byte) {
+	input := make([]byte, len(data))
+	copy(input, data)
 	if _, ok := w.badInputs[hash(data)]; ok {
 		return // no, thanks
 	}
-	res, cover, output, crashed, hanged := w.coverBin.test(data)
+
+	res, cover, output, crashed, hanged := w.runFuzzFunc(input)
 	if crashed {
+		// TODO: detect hangers again
 		w.noteCrasher(data, output, hanged)
 		return
 	}
 	w.noteNewInput(data, cover, res)
+}
+
+func (w *Coordinator) runFuzzFunc(input []byte) (result int, cover, output []byte, crashed, hanged bool) {
+	w.execs++
+	// TODO: detect hangers again
+	defer func() {
+		err := recover()
+		if err != nil {
+			crashed = true
+			output = []byte(fmt.Sprintf("panic: %s\n\n%s", err, debug.Stack()))
+		}
+	}()
+	for i := range CoverTab {
+		CoverTab[i] = 0
+	}
+	result = w.fuzzFunc(input[0:len(input):len(input)])
+	cover = (*CoverTab)[:]
+	return
 }
 
 func (w *Coordinator) noteNewInput(data, cover []byte, res int) {
@@ -245,53 +265,34 @@ func (w *Coordinator) noteCrasher(data, output []byte, hanged bool) {
 }
 
 // shutdown cleanups after worker, it is not guaranteed to be called.
-func (w *Coordinator) shutdown() {
-	w.coverBin.close()
-}
+func (w *Coordinator) shutdown() {}
 
 func extractSuppression(out []byte) []byte {
-	var supp []byte
-	seenPanic := false
-	collect := false
-	s := bufio.NewScanner(bytes.NewReader(out))
-	for s.Scan() {
-		line := s.Text()
-		if !seenPanic && (strings.HasPrefix(line, "panic: ") ||
-			strings.HasPrefix(line, "fatal error: ") ||
-			strings.HasPrefix(line, "SIG") && strings.Index(line, ": ") != 0) {
-			// Start of a crash message.
-			seenPanic = true
-			supp = append(supp, line...)
-			supp = append(supp, '\n')
-			if line == "SIGABRT: abort" || line == "signal: killed" {
-				return supp // timeout stacks are flaky
-			}
-		}
-		if collect && line == "runtime stack:" {
-			// Skip runtime stack.
-			// Unless it is a runtime bug, user stack is more descriptive.
-			collect = false
-		}
-		if collect && len(line) > 0 && (line[0] >= 'a' && line[0] <= 'z' ||
-			line[0] >= 'A' && line[0] <= 'Z') {
-			// Function name line.
-			idx := strings.LastIndex(line, "(")
-			if idx != -1 {
-				supp = append(supp, line[:idx]...)
-				supp = append(supp, '\n')
-			}
-		}
-		if collect && line == "" {
-			// End of first goroutine stack.
-			break
-		}
-		if seenPanic && !collect && line == "" {
-			// Start of first goroutine stack.
-			collect = true
-		}
+	ctx, err := stack.ParseDump(bytes.NewBuffer(out), ioutil.Discard, false)
+	if err != nil {
+		return out
 	}
-	if len(supp) == 0 {
-		supp = out
+
+	panicLine := strings.Split(string(out), "\n")[0]
+	suppression := []byte(panicLine)
+	for _, gr := range ctx.Goroutines {
+		if !gr.First {
+			continue
+		}
+
+		// first part of suppression should include line number
+		suppression = append(suppression, []byte("\n"+gr.Stack.Calls[3].FullSrcLine())...)
+
+		for _, f := range gr.Stack.Calls[4:] {
+			if f.Func.PkgDotName() == "runtime.(*Coordinator).runFuzzFunc" {
+				// no longer in the the test code
+				// TODO: make this less brittle
+				break
+			}
+			suppression = append(suppression, []byte("\n"+f.Func.PkgDotName())...)
+		}
+		return suppression
 	}
-	return supp
+
+	return out
 }

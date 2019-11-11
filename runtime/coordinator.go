@@ -17,12 +17,11 @@ type Coordinator struct {
 	suppressedSigs map[Sig]struct{}
 	lits           [][]byte // string/int literals in testee
 	maxCover       []byte
+	fuzzFunc       func([]byte) int
 
 	corpusSigs map[Sig]struct{}
 
 	mutator *Mutator
-
-	coverBin *TestBinary
 
 	triageQueue  []Input
 	crasherQueue []NewCrasherArgs
