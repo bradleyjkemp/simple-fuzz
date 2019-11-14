@@ -82,6 +82,7 @@ func (f *Fuzzer) triageInput(input Input) {
 	}
 
 	f.storage.addInput(input.data)
+	f.lastInput = time.Now()
 }
 
 // processCrasher minimizes new crashers and sends them to the hub.
