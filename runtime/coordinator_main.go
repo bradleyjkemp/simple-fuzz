@@ -6,6 +6,7 @@ package main
 import (
 	"context"
 	"flag"
+	"fmt"
 	"log"
 	"os"
 	"os/signal"
@@ -44,20 +45,22 @@ func main() {
 	debug.SetGCPercent(50) // most memory is in large binary blobs
 
 	*flagWorkdir = expandHomeDir(*flagWorkdir)
-
+	s, err := newStorage(*flagWorkdir)
+	if err != nil {
+		fmt.Println("Failed to load data:", err)
+		os.Exit(1)
+	}
 	w := &Fuzzer{
 		startTime:      time.Now(),
 		lastInput:      time.Now(),
-		suppressions:   newPersistentSet(filepath.Join(*flagWorkdir, "suppressions")),
-		crashers:       newPersistentSet(filepath.Join(*flagWorkdir, "crashers")),
-		corpus:         newPersistentSet(filepath.Join(*flagWorkdir, "corpus")),
+		storage:        s,
 		badInputs:      make(map[Sig]struct{}),
 		suppressedSigs: make(map[Sig]struct{}),
 		fuzzFunc:       fuzzFunc,
 	}
 
-	if len(w.corpus.m) == 0 {
-		w.corpus.add(Artifact{[]byte{}, false})
+	if len(w.storage.corpus) == 0 {
+		w.storage.addInput([]byte{})
 	}
 
 	// Prepare list of string and integer literals.
@@ -72,8 +75,8 @@ func main() {
 	w.mutator = newMutator()
 
 	// Give the worker initial corpus.
-	for _, a := range w.corpus.m {
-		w.triageQueue = append(w.triageQueue, Input{data: a.data, minimized: !a.user})
+	for _, a := range w.storage.corpus {
+		w.triageQueue = append(w.triageQueue, Input{data: a, minimized: false})
 	}
 
 	for shutdown.Err() == nil {

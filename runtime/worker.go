@@ -81,13 +81,7 @@ func (f *Fuzzer) triageInput(input Input) {
 		f.coverFullness = corpusCoverSize
 	}
 
-	art := Artifact{input.data, false}
-	if !f.corpus.add(art) {
-		// already have this
-		return
-	}
-	f.lastInput = time.Now()
-	f.triageQueue = append(f.triageQueue, input) // huh, we literally just triaged this?
+	f.storage.addInput(input.data)
 }
 
 // processCrasher minimizes new crashers and sends them to the hub.
@@ -117,7 +111,7 @@ func (f *Fuzzer) processCrasher(crash NewCrasherArgs) {
 			f.suppressedSigs[hash(crash.Suppression)] = struct{}{}
 		}
 	}
-	f.NewCrasher(crash)
+	f.storage.addCrasher(crash.Data, crash.Error, crash.Hanging, crash.Suppression)
 }
 
 // minimizeInput applies series of minimizing transformations to data

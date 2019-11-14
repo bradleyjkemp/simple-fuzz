@@ -6,6 +6,7 @@ package test
 import (
 	"bytes"
 	"runtime"
+	"time"
 
 	// Test vendoring support.
 	vendored_foo "non.existent.com/foo"
@@ -24,6 +25,7 @@ func init() {
 		s := "foobarbazqux"
 		for i := 0; ; i++ {
 			runtime.Gosched()
+			time.Sleep(10 * time.Millisecond)
 			if i == x {
 				s = "foobarbazquz"
 				x -= 1

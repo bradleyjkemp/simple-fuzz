@@ -4,7 +4,6 @@
 package main
 
 import (
-	"bytes"
 	"fmt"
 	"time"
 )
@@ -29,9 +28,7 @@ type Fuzzer struct {
 	execs    uint64
 	restarts uint64
 
-	corpus       *PersistentSet
-	suppressions *PersistentSet
-	crashers     *PersistentSet
+	storage *storage
 
 	startTime     time.Time
 	lastInput     time.Time
@@ -43,8 +40,8 @@ func (f *Fuzzer) broadcastStats() {
 		return
 	}
 	f.lastSync = time.Now()
-	corpus := uint64(len(f.corpus.m))
-	crashers := uint64(len(f.crashers.m))
+	corpus := uint64(len(f.storage.corpus))
+	crashers := uint64(len(f.storage.crashers))
 	uptime := time.Since(f.startTime).Truncate(time.Second)
 	startTime := f.startTime
 	lastNewInputTime := f.lastInput
@@ -70,30 +67,4 @@ type NewCrasherArgs struct {
 	Error       []byte
 	Suppression []byte
 	Hanging     bool
-}
-
-// NewCrasher saves new crasher input on coordinator.
-func (f *Fuzzer) NewCrasher(a NewCrasherArgs) {
-	if !*flagDup && !f.suppressions.add(Artifact{a.Suppression, false}) {
-		return // Already have this.
-	}
-	if !f.crashers.add(Artifact{a.Data, false}) {
-		return // Already have this.
-	}
-
-	// Prepare quoted version of input to simplify creation of standalone reproducers.
-	var buf bytes.Buffer
-	for i := 0; i < len(a.Data); i += 20 {
-		e := i + 20
-		if e > len(a.Data) {
-			e = len(a.Data)
-		}
-		fmt.Fprintf(&buf, "\t%q", a.Data[i:e])
-		if e != len(a.Data) {
-			fmt.Fprintf(&buf, " +")
-		}
-		fmt.Fprintf(&buf, "\n")
-	}
-	f.crashers.addDescription(a.Data, buf.Bytes(), "quoted")
-	f.crashers.addDescription(a.Data, a.Error, "output")
 }
