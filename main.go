@@ -14,6 +14,7 @@ import (
 	"io/ioutil"
 	"os"
 	"os/exec"
+	"os/signal"
 	"path/filepath"
 	"runtime"
 	"strings"
@@ -25,7 +26,8 @@ import (
 )
 
 var (
-	flagOut      = flag.String("o", "", "output file")
+	flagOut      = flag.String("o", "", "if set, output the fuzzer binary to this file instead of running it")
+	shouldRun    = false
 	flagPreserve = flag.String("preserve", "", "a comma-separated list of import paths not to instrument")
 )
 
@@ -67,7 +69,8 @@ func main() {
 	c.populateWorkdir()           // copy tools and packages to workdir as needed
 
 	if *flagOut == "" {
-		*flagOut = c.pkgs[0].Name + "-fuzz"
+		*flagOut = filepath.Join(os.TempDir(), c.pkgs[0].Name+"-fuzz")
+		shouldRun = true
 	}
 
 	// Gather literals, instrument, and compile.
@@ -87,6 +90,21 @@ func main() {
 	// We'd need to implement that support ourselves. (It's do-able but non-trivial.)
 	// See also https://golang.org/issue/29824.
 	c.buildInstrumentedBinary()
+	if shouldRun {
+		cmd := exec.Command(*flagOut)
+		cmd.Stdout = os.Stdout
+		cmd.Stderr = os.Stderr
+		cmd.Start()
+
+		c := make(chan os.Signal)
+		signal.Notify(c, os.Interrupt)
+		go func() {
+			sig := <-c
+			cmd.Process.Signal(sig)
+			os.RemoveAll(*flagOut)
+		}()
+		cmd.Wait()
+	}
 }
 
 // Context holds state for a go-fuzz-build run.
