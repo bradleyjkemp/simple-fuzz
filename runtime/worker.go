@@ -9,7 +9,6 @@ import (
 	"io/ioutil"
 	"log"
 	"runtime/debug"
-	"strings"
 	"time"
 
 	. "github.com/bradleyjkemp/simple-fuzz/coverage"
@@ -268,8 +267,7 @@ func extractSuppression(out []byte) []byte {
 		return out
 	}
 
-	panicLine := strings.Split(string(out), "\n")[0]
-	suppression := []byte(panicLine)
+	var suppression []byte
 	for _, gr := range ctx.Goroutines {
 		if !gr.First {
 			continue
