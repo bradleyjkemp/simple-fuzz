@@ -44,17 +44,12 @@ func (f *Fuzzer) broadcastStats() {
 	lastNewInputTime := f.lastInput
 	cover := uint64(f.coverFullness)
 
-	var restartsDenom uint64
-	if f.execs != 0 && f.restarts != 0 {
-		restartsDenom = f.execs / f.restarts
-	}
-
 	execsPerSec := float64(f.execs) * 1e9 / float64(time.Since(startTime))
 	// log to stdout
 	fmt.Printf("corpus: %v (%v ago), crashers: %v,"+
-		" restarts: 1/%v, execs: %v (%.0f/sec), cover: %v, uptime: %v\n",
+		" execs: %v (%.0f/sec), cover: %v, uptime: %v\n",
 		corpus, time.Since(lastNewInputTime).Truncate(time.Second),
-		crashers, restartsDenom, f.execs, execsPerSec, cover,
+		crashers, f.execs, execsPerSec, cover,
 		uptime,
 	)
 }
