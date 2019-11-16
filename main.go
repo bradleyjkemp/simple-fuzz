@@ -35,13 +35,7 @@ var (
 // that clients can then modify and use for calls to go/packages.
 func basePackagesConfig() *packages.Config {
 	cfg := new(packages.Config)
-
-	goFuzzModule, isGoFuzzModuleSet := os.LookupEnv("GOFUZZ111MODULE")
-	if isGoFuzzModuleSet {
-		cfg.Env = append(os.Environ(), "GO111MODULE="+goFuzzModule)
-	} else {
-		cfg.Env = append(os.Environ(), "GO111MODULE=off")
-	}
+	cfg.Env = os.Environ()
 	return cfg
 }
 
@@ -263,7 +257,7 @@ func (c *Context) buildInstrumentedBinary() {
 	cmd.Env = append(os.Environ(),
 		"GOROOT="+filepath.Join(c.workdir, "goroot"),
 		"GOPATH="+filepath.Join(c.workdir, "gopath"),
-		"GO111MODULE=off", // temporary measure until we have proper module support
+		"GO111MODULE=off", // we have constructed a non-module, GOPATH environment
 	)
 	if out, err := cmd.CombinedOutput(); err != nil {
 		c.failf("failed to execute go build: %v\n%v", err, string(out))
