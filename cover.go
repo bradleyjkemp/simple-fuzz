@@ -4,15 +4,17 @@
 package main
 
 import (
-	"crypto/sha1"
 	"fmt"
 	"go/ast"
 	"go/printer"
 	"go/token"
 	"go/types"
 	"io"
+	"math/rand"
 	"strconv"
 	"strings"
+
+	"github.com/bradleyjkemp/simple-fuzz/coverage"
 )
 
 const fuzzdepPkg = "_go_fuzz_dep_"
@@ -139,33 +141,51 @@ func (f *File) addImport(path, name, anyIdent string) {
 	astFile.Decls = append(astFile.Decls, reference)
 }
 
-var counterGen uint32
-
-func genCounter() int {
-	counterGen++
-	id := counterGen
-	buf := []byte{byte(id), byte(id >> 8), byte(id >> 16), byte(id >> 24)}
-	hash := sha1.Sum(buf)
-	return int(uint16(hash[0]) | uint16(hash[1])<<8)
-}
-
+// Returns the expression:
+// {
+//    CoverTab[<generatedLocationID> ^ PreviousLocationID]++
+//	  PreviousLocationID = <generatedLocationID> >> 1
+// }
+// As implemented in AFL to get pseudo path coverage
 func newCounter() ast.Stmt {
-	cnt := genCounter()
+	currentLocation := rand.Intn(coverage.CoverSize)
 
-	idx := &ast.BasicLit{
+	currentID := &ast.BasicLit{
 		Kind:  token.INT,
-		Value: strconv.Itoa(cnt),
+		Value: strconv.Itoa(currentLocation),
 	}
+	previousLocation := &ast.SelectorExpr{
+		X:   ast.NewIdent(fuzzdepPkg),
+		Sel: ast.NewIdent("PreviousLocationID"),
+	}
+
+	// CoverTab[currentID ^ previousLocation]
 	counter := &ast.IndexExpr{
 		X: &ast.SelectorExpr{
 			X:   ast.NewIdent(fuzzdepPkg),
 			Sel: ast.NewIdent("CoverTab"),
 		},
-		Index: idx,
+		Index: &ast.BinaryExpr{
+			X:  currentID,
+			Op: token.XOR,
+			Y:  previousLocation,
+		},
 	}
-	return &ast.IncDecStmt{
-		X:   counter,
-		Tok: token.INC,
+
+	return &ast.BlockStmt{
+		List: []ast.Stmt{
+			// Increment the coverage table
+			&ast.IncDecStmt{
+				X:   counter,
+				Tok: token.INC,
+			},
+			// PreviousLocationID = currentLocation >> 1
+			&ast.AssignStmt{
+				Lhs: []ast.Expr{previousLocation},
+				Tok: token.ASSIGN,
+				Rhs: []ast.Expr{&ast.BasicLit{Kind: token.INT, Value: fmt.Sprint(currentLocation >> 1)}},
+			},
+		},
 	}
 }
 
