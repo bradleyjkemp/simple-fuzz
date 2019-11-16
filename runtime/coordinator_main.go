@@ -73,21 +73,20 @@ func main() {
 
 	w.mutator = newMutator()
 
-	// Give the worker initial corpus.
+	//Triage the initial corpus.
 	for _, a := range w.storage.corpus {
-		w.triageQueue = append(w.triageQueue, Input{data: a, minimized: false})
+		if shutdown.Err() != nil {
+			break
+		}
+		w.broadcastStats()
+		w.triageInput(Input{data: a, minimized: false})
 	}
 
 	for shutdown.Err() == nil {
+		w.broadcastStats()
 		if *flagV >= 1 {
 			log.Printf("worker loop crasherQueue=%d triageQueue=%d", len(w.crasherQueue), len(w.triageQueue))
 		}
-
-		if time.Since(w.lastSync) > syncPeriod {
-			w.broadcastStats()
-			w.lastSync = time.Now()
-		}
-
 		if len(w.crasherQueue) > 0 {
 			n := len(w.crasherQueue) - 1
 			crash := w.crasherQueue[n]
