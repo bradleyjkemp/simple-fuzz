@@ -227,11 +227,9 @@ func (f *Fuzzer) runFuzzFunc(input []byte) (result int, cover, output []byte, cr
 			output = []byte(fmt.Sprintf("panic: %s\n\n%s", err, debug.Stack()))
 		}
 	}()
-	for i := range CoverTab {
-		CoverTab[i] = 0
-	}
+	CoverTab = [CoverSize]byte{}
 	result = f.fuzzFunc(input[0:len(input):len(input)])
-	cover = (*CoverTab)[:]
+	cover = (CoverTab)[:]
 	return
 }
 

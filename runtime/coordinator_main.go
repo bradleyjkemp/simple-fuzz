@@ -34,6 +34,7 @@ func main() {
 	go func() {
 		var cancel context.CancelFunc
 		shutdown, cancel = context.WithCancel(context.Background())
+		//shutdown, cancel = context.WithTimeout(shutdown, 1*time.Minute)
 		<-sigChan
 		cancel()
 

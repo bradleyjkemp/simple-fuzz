@@ -13,7 +13,7 @@ const (
 // executed during process initialization has somewhere to write to.
 // It is replaced by a newly initialized array when it is
 // time for actual instrumentation to commence.
-var CoverTab = new([CoverSize]byte)
+var CoverTab [CoverSize]byte
 
 // PreviousLocationID stores the id of the previous coverage point.
 // This is combined with the current id to decide which entry in the CoverTab
