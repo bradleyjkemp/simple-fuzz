@@ -97,9 +97,21 @@ func Fuzz(data []byte) int {
 			// new coverage
 		}
 	}
-	if len(data) == 7 && data[7:8][0] == 'a' {
-		// The above should cause OOB.
+
+	switch len(data) {
+	case 0, 1, 2:
+
+	case 3, 4, 5, 6:
+
+	case 7:
+		if data[7:8][0] == 'a' {
+			// The above should cause OOB.
+		}
+
+	default:
+
 	}
+
 	return 0
 }
 

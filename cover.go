@@ -33,7 +33,21 @@ func instrument(pkg, fullName string, fset *token.FileSet, parsedFile *ast.File,
 func instrumentAST(node ast.Node) bool {
 	switch n := node.(type) {
 	case *ast.IfStmt:
-		instrumentIf(n)
+		// Add counter to the start of the if block
+		n.Body.List = append([]ast.Stmt{newCounter()}, n.Body.List...)
+		if n.Else == nil {
+			// If no else block, add one that just increments a counter
+			n.Else = &ast.BlockStmt{
+				List: []ast.Stmt{
+					newCounter(),
+				},
+			}
+		}
+		if e, ok := n.Else.(*ast.BlockStmt); ok {
+			// If bare else statement add a counter increment
+			e.List = append([]ast.Stmt{newCounter()}, e.List...)
+		}
+		// An else-if block is handled by recursion
 
 	case *ast.FuncDecl:
 		if n.Body == nil {
@@ -41,33 +55,21 @@ func instrumentAST(node ast.Node) bool {
 			return false
 		}
 		n.Body.List = append([]ast.Stmt{newCounter()}, n.Body.List...)
+
+	// Single case: inside a switch statement
+	case *ast.CaseClause:
+		n.Body = append([]ast.Stmt{newCounter()}, n.Body...)
+
+	// Single case: inside a select statement
+	case *ast.CommClause:
+		n.Body = append([]ast.Stmt{newCounter()}, n.Body...)
+
+	case *ast.ForStmt:
+		n.Body.List = append([]ast.Stmt{newCounter()}, n.Body.List...)
 	}
 
+	// Recurse deeper into the AST
 	return true
-}
-
-func instrumentIf(n *ast.IfStmt) bool {
-	// Add counter to the start of the if block
-	n.Body.List = append([]ast.Stmt{newCounter()}, n.Body.List...)
-
-	// Make sure else statement exists
-	if n.Else == nil {
-		n.Else = &ast.BlockStmt{
-			List: nil,
-		}
-	}
-
-	switch e := n.Else.(type) {
-	case *ast.BlockStmt:
-		// Add counter to else statement
-		e.List = append([]ast.Stmt{newCounter()}, e.List...)
-		return true
-	case *ast.IfStmt:
-		// Recurse to cover the else-if
-		return instrumentIf(e)
-	default:
-		panic("unexpected else type")
-	}
 }
 
 func trimComments(file *ast.File, fset *token.FileSet) []*ast.CommentGroup {
