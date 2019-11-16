@@ -47,6 +47,7 @@ func (f *Fuzzer) triageInput(input Input) {
 
 	if !input.minimized {
 		input.minimized = true
+		targetCover := findNewCover(f.maxCover, cover)
 		input.data = f.minimizeInput(input.data, false, func(candidate, cover, output []byte, res int, crashed, hanged bool) bool {
 			if crashed {
 				f.noteCrasher(candidate, output, hanged)
@@ -56,7 +57,14 @@ func (f *Fuzzer) triageInput(input Input) {
 				f.noteNewInput(candidate, cover, res)
 				return false
 			}
-			return string(input.cover) == string(cover)
+			// Minimised input is still good as long as its coverage
+			// is >= the target coverage
+			for loc := range cover {
+				if cover[loc] < targetCover[loc] {
+					return false
+				}
+			}
+			return true
 		})
 	}
 
@@ -71,7 +79,6 @@ func (f *Fuzzer) triageInput(input Input) {
 	if f.coverFullness < corpusCoverSize {
 		f.coverFullness = corpusCoverSize
 	}
-
 }
 
 // processCrasher minimizes new crashers and sends them to the hub.

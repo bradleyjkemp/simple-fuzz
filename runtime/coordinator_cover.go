@@ -17,25 +17,22 @@ func compareCover(base, cur []byte) bool {
 	if len(base) != CoverSize || len(cur) != CoverSize {
 		log.Fatalf("bad cover table size (%v, %v)", len(base), len(cur))
 	}
-	res := compareCoverDump(base, cur)
-	if false {
-		// This check can legitimately fail if the test process has
-		// some background goroutines that continue to write to the
-		// cover array (cur storage is in shared memory).
-		if compareCoverDump(base, cur) != res {
-			panic("bad")
-		}
-	}
-	return res
-}
-
-func compareCoverDump(base, cur []byte) bool {
 	for i, v := range base {
 		if cur[i] > v {
 			return true
 		}
 	}
 	return false
+}
+
+func findNewCover(old, new []byte) []byte {
+	newCover := make([]byte, len(new))
+	for loc := range new {
+		if new[loc] > old[loc] {
+			newCover[loc] = new[loc]
+		}
+	}
+	return newCover
 }
 
 func updateMaxCover(base, cur []byte) int {
