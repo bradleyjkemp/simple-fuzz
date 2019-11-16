@@ -26,6 +26,7 @@ type storage struct {
 	crashers     map[Sig][]byte
 	suppressions map[string]bool
 	corpus       map[Sig][]byte
+	corpusInputs [][]byte
 }
 
 type crasherMetadata struct {
@@ -58,10 +59,18 @@ func newStorage(dir string) (*storage, error) {
 }
 
 func (s *storage) addInput(input []byte) error {
+	if s.haveInput(input) {
+		return nil
+	}
+	s.corpusInputs = append(s.corpusInputs, input)
 	s.corpus[hash(input)] = input
 	filename := fmt.Sprintf("%x", hash(input))
 
 	return ioutil.WriteFile(filepath.Join(s.corpusDir, filename), input, 0644)
+}
+
+func (s *storage) haveInput(input []byte) bool {
+	return s.corpus[hash(input)] != nil
 }
 
 func (s *storage) addCrasher(input []byte, error []byte, hanging bool, suppression []byte) {
@@ -144,6 +153,5 @@ func (s *storage) corpusWalker(path string, info os.FileInfo, err error) error {
 		return err
 	}
 
-	s.corpus[hash(contents)] = contents
-	return nil
+	return s.addInput(contents)
 }

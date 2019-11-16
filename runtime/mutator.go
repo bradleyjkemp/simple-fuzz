@@ -46,8 +46,8 @@ func (m *Mutator) randByteOrder() binary.ByteOrder {
 	return binary.BigEndian
 }
 
-func (m *Mutator) generate(corpus []Input, lits [][]byte) []byte {
-	data := corpus[m.rand(len(corpus))].data
+func (m *Mutator) generate(corpus [][]byte, lits [][]byte) []byte {
+	data := corpus[m.rand(len(corpus))]
 	res := make([]byte, len(data))
 	copy(res, data)
 	nm := 1 + m.Exp2()
@@ -300,7 +300,7 @@ func (m *Mutator) generate(corpus []Input, lits [][]byte) []byte {
 				iter--
 				continue
 			}
-			other := corpus[m.rand(len(corpus))].data
+			other := corpus[m.rand(len(corpus))]
 			if len(other) < 4 || &res[0] == &other[0] {
 				iter--
 				continue
@@ -327,7 +327,7 @@ func (m *Mutator) generate(corpus []Input, lits [][]byte) []byte {
 				iter--
 				continue
 			}
-			other := corpus[m.rand(len(corpus))].data
+			other := corpus[m.rand(len(corpus))]
 			if len(other) < 4 || &res[0] == &other[0] {
 				iter--
 				continue

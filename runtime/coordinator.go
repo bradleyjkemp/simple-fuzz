@@ -10,14 +10,11 @@ import (
 
 // Fuzzer manages persistent fuzzer state like input corpus and crashers.
 type Fuzzer struct {
-	corpusInputs   []Input
 	badInputs      map[Sig]struct{}
 	suppressedSigs map[Sig]struct{}
 	lits           [][]byte // string/int literals in testee
 	maxCover       []byte
 	fuzzFunc       func([]byte) int
-
-	corpusSigs map[Sig]struct{}
 
 	mutator *Mutator
 

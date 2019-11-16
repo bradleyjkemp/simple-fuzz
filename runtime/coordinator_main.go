@@ -69,8 +69,6 @@ func main() {
 		w.lits = append(w.lits, []byte(lit))
 	}
 
-	w.corpusSigs = make(map[Sig]struct{})
-
 	w.maxCover = make([]byte, CoverSize)
 
 	w.mutator = newMutator()
@@ -115,7 +113,7 @@ func main() {
 		}
 
 		// Plain old blind fuzzing.
-		data := w.mutator.generate(w.corpusInputs, w.lits)
+		data := w.mutator.generate(w.storage.corpusInputs, w.lits)
 		w.testInput(data)
 	}
 	w.shutdown()

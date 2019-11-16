@@ -64,24 +64,14 @@ func (f *Fuzzer) triageInput(input Input) {
 	if !compareCover(f.maxCover, input.cover) {
 		return
 	}
-	sig := hash(input.data)
-	if _, ok := f.corpusSigs[sig]; ok {
-		return
-	}
 
-	// Passed deduplication, taking it.
-	if *flagV >= 2 {
-		log.Printf("hub received new input [%v]%x minimized=%v", len(input.data), hash(input.data), input.minimized)
-	}
-	f.corpusSigs[sig] = struct{}{}
-	f.corpusInputs = append(f.corpusInputs, input)
+	f.lastInput = time.Now()
+	f.storage.addInput(input.data)
 	corpusCoverSize := updateMaxCover(f.maxCover, input.cover)
 	if f.coverFullness < corpusCoverSize {
 		f.coverFullness = corpusCoverSize
 	}
 
-	f.storage.addInput(input.data)
-	f.lastInput = time.Now()
 }
 
 // processCrasher minimizes new crashers and sends them to the hub.
