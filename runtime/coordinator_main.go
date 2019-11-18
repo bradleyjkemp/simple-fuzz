@@ -100,10 +100,8 @@ func main() {
 		}
 
 		if len(w.triageQueue) > 0 {
-			n := len(w.triageQueue) - 1
-			input := w.triageQueue[n]
-			w.triageQueue[n] = Input{}
-			w.triageQueue = w.triageQueue[:n]
+			input := w.triageQueue[0]
+			w.triageQueue = w.triageQueue[1:]
 			if *flagV >= 2 {
 				log.Printf("worker triages local input [%v]%x", len(input.data), hash(input.data))
 			}
