@@ -249,9 +249,6 @@ func (f *Fuzzer) noteCrasher(data, output []byte, hanged bool) {
 	})
 }
 
-// shutdown cleanups after worker, it is not guaranteed to be called.
-func (f *Fuzzer) shutdown() {}
-
 func extractSuppression(out []byte) []byte {
 	ctx, err := stack.ParseDump(bytes.NewBuffer(out), ioutil.Discard, false)
 	if err != nil {

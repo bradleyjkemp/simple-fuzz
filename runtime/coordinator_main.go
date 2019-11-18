@@ -115,7 +115,6 @@ func main() {
 		data := w.mutator.generate(w.storage.corpusInputs, w.lits)
 		w.testInput(data)
 	}
-	w.shutdown()
 }
 
 // expandHomeDir expands the tilde sign and replaces it
