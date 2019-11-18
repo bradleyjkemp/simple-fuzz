@@ -44,6 +44,11 @@ func (f *Fuzzer) triageInput(input Input) {
 	input.cover = make([]byte, CoverSize)
 	copy(input.cover, cover) // cover is shared memory so needs to be copied
 
+	// Only want input if it hits something new
+	if !compareCover(f.maxCover, input.cover) {
+		return
+	}
+
 	targetCover := findNewCover(f.maxCover, cover)
 	input.data = f.minimizeInput(input.data, false, func(candidate, cover, output []byte, res int, crashed, hanged bool) bool {
 		if crashed {
@@ -63,11 +68,6 @@ func (f *Fuzzer) triageInput(input Input) {
 		}
 		return true
 	})
-
-	// New interesting input from worker.
-	if !compareCover(f.maxCover, input.cover) {
-		return
-	}
 
 	f.lastInput = time.Now()
 	f.storage.addInput(input.data)
