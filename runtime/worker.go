@@ -32,6 +32,9 @@ func (f *Fuzzer) triageInput(input Input) {
 	if len(input.data) > MaxInputSize {
 		input.data = input.data[:MaxInputSize]
 	}
+	if _, ok := f.badInputs[hash(input.data)]; ok {
+		return // don't want to run any inputs known to hang
+	}
 
 	res, cover, output, crashed, hanged := f.runFuzzFunc(input.data)
 	if crashed {
@@ -192,22 +195,6 @@ func (f *Fuzzer) minimizeInput(data []byte, canonicalize bool, pred func(candida
 	}
 
 	return res
-}
-
-func (f *Fuzzer) testInput(data []byte) {
-	input := make([]byte, len(data))
-	copy(input, data)
-	if _, ok := f.badInputs[hash(data)]; ok {
-		return // no, thanks
-	}
-
-	res, cover, output, crashed, hanged := f.runFuzzFunc(input)
-	if crashed {
-		// TODO: detect hangers again
-		f.noteCrasher(data, output, hanged)
-		return
-	}
-	f.noteNewInput(data, cover, res)
 }
 
 func (f *Fuzzer) runFuzzFunc(input []byte) (result int, cover, output []byte, crashed, hanged bool) {

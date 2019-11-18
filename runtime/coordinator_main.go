@@ -111,7 +111,7 @@ func main() {
 
 		// Plain old blind fuzzing.
 		data := w.mutator.generate(w.storage.corpusInputs, w.lits)
-		w.testInput(data)
+		w.triageInput(Input{data: data})
 	}
 }
 

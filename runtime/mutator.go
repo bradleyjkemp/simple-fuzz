@@ -8,6 +8,7 @@ import (
 	"math/bits"
 	"math/rand"
 	"strconv"
+	"time"
 
 	. "github.com/bradleyjkemp/simple-fuzz/coverage"
 )
@@ -17,8 +18,7 @@ type Mutator struct {
 }
 
 func newMutator() *Mutator {
-	// TODO: revert this deterministic seed
-	return &Mutator{r: rand.New(rand.NewSource(1))}
+	return &Mutator{r: rand.New(rand.NewSource(time.Now().Unix()))}
 }
 
 func (m *Mutator) rand(n int) int {
