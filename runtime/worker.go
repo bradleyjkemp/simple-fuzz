@@ -20,10 +20,9 @@ const (
 )
 
 type Input struct {
-	minimized bool
-	data      []byte
-	cover     []byte
-	res       int
+	data  []byte
+	cover []byte
+	res   int
 }
 
 // triageInput processes every new input.
@@ -45,28 +44,25 @@ func (f *Fuzzer) triageInput(input Input) {
 	input.cover = make([]byte, CoverSize)
 	copy(input.cover, cover) // cover is shared memory so needs to be copied
 
-	if !input.minimized {
-		input.minimized = true
-		targetCover := findNewCover(f.maxCover, cover)
-		input.data = f.minimizeInput(input.data, false, func(candidate, cover, output []byte, res int, crashed, hanged bool) bool {
-			if crashed {
-				f.noteCrasher(candidate, output, hanged)
+	targetCover := findNewCover(f.maxCover, cover)
+	input.data = f.minimizeInput(input.data, false, func(candidate, cover, output []byte, res int, crashed, hanged bool) bool {
+		if crashed {
+			f.noteCrasher(candidate, output, hanged)
+			return false
+		}
+		if input.res != res {
+			f.noteNewInput(candidate, cover, res)
+			return false
+		}
+		// Minimised input is still good as long as its coverage
+		// is >= the target coverage
+		for loc := range cover {
+			if cover[loc] < targetCover[loc] {
 				return false
 			}
-			if input.res != res {
-				f.noteNewInput(candidate, cover, res)
-				return false
-			}
-			// Minimised input is still good as long as its coverage
-			// is >= the target coverage
-			for loc := range cover {
-				if cover[loc] < targetCover[loc] {
-					return false
-				}
-			}
-			return true
-		})
-	}
+		}
+		return true
+	})
 
 	// New interesting input from worker.
 	if !compareCover(f.maxCover, input.cover) {
@@ -236,7 +232,7 @@ func (f *Fuzzer) noteNewInput(data, cover []byte, res int) {
 		return
 	}
 	if compareCover(f.maxCover, cover) {
-		f.triageQueue = append(f.triageQueue, Input{data: makeCopy(data), minimized: false})
+		f.triageQueue = append(f.triageQueue, Input{data: makeCopy(data)})
 	}
 }
 

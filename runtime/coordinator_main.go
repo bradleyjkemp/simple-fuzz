@@ -79,7 +79,7 @@ func main() {
 			break
 		}
 		w.broadcastStats()
-		w.triageInput(Input{data: a, minimized: false})
+		w.triageInput(Input{data: a})
 	}
 
 	for shutdown.Err() == nil {
@@ -105,7 +105,7 @@ func main() {
 			w.triageQueue[n] = Input{}
 			w.triageQueue = w.triageQueue[:n]
 			if *flagV >= 2 {
-				log.Printf("worker triages local input [%v]%x minimized=%v", len(input.data), hash(input.data), input.minimized)
+				log.Printf("worker triages local input [%v]%x", len(input.data), hash(input.data))
 			}
 			w.triageInput(input)
 			continue
