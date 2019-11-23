@@ -424,7 +424,7 @@ func (c *Context) instrumentPackages() []string {
 					fuzzTargets = append(fuzzTargets, pkg.PkgPath)
 				}
 			}
-			instrument(pkg.PkgPath, fullName, pkg.Fset, f, pkg.TypesInfo, buf)
+			instrument(pkg.Fset, f, buf)
 			outpath := filepath.Join(path, fname)
 			c.writeFile(outpath, buf.Bytes())
 		}

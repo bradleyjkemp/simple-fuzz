@@ -8,7 +8,6 @@ import (
 	"go/ast"
 	"go/printer"
 	"go/token"
-	"go/types"
 	"io"
 	"math/rand"
 	"strconv"
@@ -19,17 +18,17 @@ import (
 
 const fuzzdepPkg = "_go_fuzz_dep_"
 
-func instrument(pkg, fullName string, fset *token.FileSet, parsedFile *ast.File, info *types.Info, out io.Writer) {
-	file := &File{
-		fset:     fset,
-		pkg:      pkg,
-		fullName: fullName,
-		astFile:  parsedFile,
-		info:     info,
-	}
-	file.addImport("coverage", fuzzdepPkg, "CoverTab")
-	ast.Inspect(file.astFile, instrumentAST)
-	file.print(out)
+var astPrinter = printer.Config{
+	Mode:     printer.SourcePos,
+	Tabwidth: 8,
+	Indent:   0,
+}
+
+func instrument(fset *token.FileSet, parsedFile *ast.File, out io.Writer) {
+	addCoverageImport(parsedFile)
+	ast.Inspect(parsedFile, instrumentAST)
+
+	astPrinter.Fprint(out, fset, parsedFile)
 }
 
 func instrumentAST(node ast.Node) bool {
@@ -86,20 +85,12 @@ func trimComments(file *ast.File, fset *token.FileSet) []*ast.CommentGroup {
 	return comments
 }
 
-type File struct {
-	fset     *token.FileSet
-	pkg      string
-	fullName string
-	astFile  *ast.File
-	info     *types.Info
-}
-
-func (f *File) addImport(path, name, anyIdent string) {
+func addCoverageImport(astFile *ast.File) {
 	newImport := &ast.ImportSpec{
-		Name: ast.NewIdent(name),
+		Name: ast.NewIdent(fuzzdepPkg),
 		Path: &ast.BasicLit{
 			Kind:  token.STRING,
-			Value: fmt.Sprintf("%q", path),
+			Value: "\"coverage\"",
 		},
 	}
 	impDecl := &ast.GenDecl{
@@ -109,7 +100,6 @@ func (f *File) addImport(path, name, anyIdent string) {
 		},
 	}
 	// Make the new import the first Decl in the file.
-	astFile := f.astFile
 	astFile.Decls = append(astFile.Decls, nil)
 	copy(astFile.Decls[1:], astFile.Decls[0:])
 	astFile.Decls[0] = impDecl
@@ -127,8 +117,8 @@ func (f *File) addImport(path, name, anyIdent string) {
 				},
 				Values: []ast.Expr{
 					&ast.SelectorExpr{
-						X:   ast.NewIdent(name),
-						Sel: ast.NewIdent(anyIdent),
+						X:   ast.NewIdent(fuzzdepPkg),
+						Sel: ast.NewIdent("CoverTab"),
 					},
 				},
 			},
@@ -183,13 +173,4 @@ func newCounter() ast.Stmt {
 			},
 		},
 	}
-}
-
-func (f *File) print(w io.Writer) {
-	cfg := printer.Config{
-		Mode:     printer.SourcePos,
-		Tabwidth: 8,
-		Indent:   0,
-	}
-	cfg.Fprint(w, f.fset, f.astFile)
 }
