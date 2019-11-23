@@ -4,7 +4,7 @@
 package coverage
 
 const (
-	CoverSize    = 64 << 10
+	CoverSize    = 8 << 10
 	MaxInputSize = 1 << 20
 )
 
