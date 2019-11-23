@@ -4,6 +4,7 @@
 package main
 
 import (
+	"bytes"
 	"context"
 	"flag"
 	"fmt"
@@ -13,6 +14,8 @@ import (
 	"os/user"
 	"path/filepath"
 	"runtime/debug"
+	"runtime/pprof"
+	"strconv"
 	"syscall"
 	"time"
 
@@ -34,7 +37,7 @@ func main() {
 	go func() {
 		var cancel context.CancelFunc
 		shutdown, cancel = context.WithCancel(context.Background())
-		//shutdown, cancel = context.WithTimeout(shutdown, 1*time.Minute)
+		//shutdown, cancel = context.WithTimeout(shutdown, 30*time.Second)
 		<-sigChan
 		cancel()
 
@@ -58,7 +61,9 @@ func main() {
 		badInputs:      make(map[Sig]struct{}),
 		suppressedSigs: make(map[Sig]struct{}),
 		fuzzFunc:       fuzzFunc,
+		lastExec:       time.Now(),
 	}
+	go w.watchForHangingInputs()
 
 	if len(w.storage.corpus) == 0 {
 		w.storage.addInput([]byte{})
@@ -112,6 +117,20 @@ func main() {
 		// Plain old blind fuzzing.
 		data := w.mutator.generate(w.storage.corpusInputs, w.lits)
 		w.triageInput(Input{data: data})
+	}
+}
+
+// Watches for inputs that are hanging and kills the process
+func (f *Fuzzer) watchForHangingInputs() {
+	for range time.Tick(time.Second) {
+		if time.Since(f.lastExec) > 10*time.Second {
+			fmt.Printf("Input causes hang: %s\n", strconv.Quote(string(f.currentCandidate)))
+			b := &bytes.Buffer{}
+			// TODO: this too can hang if the infinite loop isn't interruptible by the scheduler
+			pprof.Lookup("goroutine").WriteTo(b, 1)
+			output := fmt.Sprintf("hanger\n\n%s", b.String())
+			panic(output)
+		}
 	}
 }
 

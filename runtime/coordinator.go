@@ -30,6 +30,10 @@ type Fuzzer struct {
 	startTime     time.Time
 	lastInput     time.Time
 	coverFullness int
+
+	// Used to detect when inputs have caused a hang/infinite-loop
+	currentCandidate []byte
+	lastExec         time.Time
 }
 
 func (f *Fuzzer) broadcastStats() {

@@ -199,7 +199,8 @@ func (f *Fuzzer) minimizeInput(data []byte, canonicalize bool, pred func(candida
 
 func (f *Fuzzer) runFuzzFunc(input []byte) (result int, cover, output []byte, crashed, hanged bool) {
 	f.execs++
-	// TODO: detect hangers again
+	f.currentCandidate = input
+	f.lastExec = time.Now()
 	defer func() {
 		err := recover()
 		if err != nil {
