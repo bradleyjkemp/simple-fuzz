@@ -69,20 +69,21 @@ func instrumentAST(node ast.Node) bool {
 	return true
 }
 
-func trimComments(file *ast.File, fset *token.FileSet) []*ast.CommentGroup {
-	var comments []*ast.CommentGroup
+func removeUnnecessaryComments(file *ast.File, fset *token.FileSet) {
+	// Most comments get messed up when the AST is instrumented so
+	// we want to remove as many comments as possible first
+	n := 0
 	for _, group := range file.Comments {
-		var list []*ast.Comment
 		for _, comment := range group.List {
+			// Only keep comment groups that might affect compiler behaviour
 			if strings.HasPrefix(comment.Text, "//go:") && fset.Position(comment.Slash).Column == 1 {
-				list = append(list, comment)
+				file.Comments[n] = group
+				n++
+				break
 			}
 		}
-		if list != nil {
-			comments = append(comments, &ast.CommentGroup{List: list})
-		}
 	}
-	return comments
+	file.Comments = file.Comments[:n]
 }
 
 func addCoverageImport(astFile *ast.File) {

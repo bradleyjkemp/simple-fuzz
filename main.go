@@ -413,8 +413,7 @@ func (c *Context) instrumentPackages() []string {
 			}
 			f := pkg.Syntax[i]
 
-			// TODO: rename trimComments?
-			f.Comments = trimComments(f, pkg.Fset)
+			removeUnnecessaryComments(f, pkg.Fset)
 
 			buf := new(bytes.Buffer)
 			if registerFuzzFuncs(pkg.PkgPath, f) {
