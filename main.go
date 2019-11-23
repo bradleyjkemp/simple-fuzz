@@ -367,7 +367,10 @@ func (c *Context) clonePackage(p *packages.Package) {
 // packageNamed extracts the package listed in path.
 func (c *Context) packageNamed(path string) (pkgs *packages.Package) {
 	all := c.packagesNamed(path)
-	if len(all) != 1 {
+	if len(all) == 0 {
+		c.failf("got no packages matching %v", path)
+	}
+	if len(all) > 1 {
 		c.failf("got multiple packages, requested only %v", path)
 	}
 	return all[0]
