@@ -38,12 +38,8 @@ func instrumentAST(node ast.Node) bool {
 		// Add counter to the start of the if block
 		n.Body.List = append([]ast.Stmt{newCounter()}, n.Body.List...)
 		if n.Else == nil {
-			// If no else block, add one that just increments a counter
-			n.Else = &ast.BlockStmt{
-				List: []ast.Stmt{
-					newCounter(),
-				},
-			}
+			// If no else block, add an empty one (will be instrumented by recursion)
+			n.Else = &ast.BlockStmt{}
 		}
 		if e, ok := n.Else.(*ast.BlockStmt); ok {
 			// If bare else statement add a counter increment
