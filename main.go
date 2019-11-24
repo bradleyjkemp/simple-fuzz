@@ -43,17 +43,12 @@ func basePackagesConfig() *packages.Config {
 func main() {
 	flag.Parse()
 	c := new(Context)
-
-	if flag.NArg() > 1 {
-		c.failf("usage: go-fuzz-build [pkg]")
+	pkgs := flag.Args()
+	if len(pkgs) == 0 {
+		pkgs = []string{"."}
 	}
 
-	pkg := "."
-	if flag.NArg() == 1 {
-		pkg = flag.Arg(0)
-	}
-
-	c.loadPkg(pkg)                // load and typecheck pkg
+	c.loadPkg(pkgs)               // load and typecheck pkg
 	c.getEnv()                    // discover GOROOT, GOPATH
 	c.loadStd()                   // load standard library
 	c.calcIgnore()                // calculate set of packages to ignore
@@ -132,7 +127,7 @@ func (c *Context) getEnv() {
 
 // loadPkg loads, parses, and typechecks pkg (the package containing the Fuzz function),
 // go-fuzz-dep, and their dependencies.
-func (c *Context) loadPkg(pkg string) {
+func (c *Context) loadPkg(pkgs []string) {
 	// Load, parse, and type-check all packages.
 	// We'll use the type information later.
 	// This also provides better error messages in the case
@@ -148,14 +143,14 @@ func (c *Context) loadPkg(pkg string) {
 	// * go-fuzz-runtime, since we use it for instrumentation
 	// * reflect, if we are using libfuzzer, since its generated main function requires it
 	var err error
-	c.targetPackages, err = packages.Load(cfg, pkg)
+	c.targetPackages, err = packages.Load(cfg, pkgs...)
 	if err != nil {
 		c.failf("could not load packages: %v", err)
 	}
 
 	// Stop if any package had errors.
 	if packages.PrintErrors(c.targetPackages) > 0 {
-		c.failf("typechecking of %v failed", pkg)
+		c.failf("typechecking of %v failed", pkgs)
 	}
 
 	c.runtimePackage, err = packages.Load(cfg, "github.com/bradleyjkemp/simple-fuzz/runtime")
