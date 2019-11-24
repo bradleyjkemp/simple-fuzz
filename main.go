@@ -63,7 +63,7 @@ func main() {
 	c.populateWorkdir()           // copy tools and packages to workdir as needed
 
 	if *flagOut == "" {
-		*flagOut = filepath.Join(os.TempDir(), c.pkgs[0].Name+"-fuzz")
+		*flagOut = filepath.Join(os.TempDir(), c.targetPackages[0].Name+"-fuzz")
 		shouldRun = true
 	}
 
@@ -103,7 +103,8 @@ func main() {
 
 // Context holds state for a go-fuzz-build run.
 type Context struct {
-	pkgs []*packages.Package // typechecked root packages
+	targetPackages []*packages.Package // typechecked root packages
+	runtimePackage []*packages.Package // the fuzzer itself
 
 	std    map[string]bool // set of packages in the standard library
 	ignore map[string]bool // set of packages to ignore during instrumentation
@@ -153,18 +154,21 @@ func (c *Context) loadPkg(pkg string) {
 	// * the target package, obviously
 	// * go-fuzz-runtime, since we use it for instrumentation
 	// * reflect, if we are using libfuzzer, since its generated main function requires it
-	loadpkgs := []string{pkg, "github.com/bradleyjkemp/simple-fuzz/runtime"}
-	initial, err := packages.Load(cfg, loadpkgs...)
+	var err error
+	c.targetPackages, err = packages.Load(cfg, pkg)
 	if err != nil {
 		c.failf("could not load packages: %v", err)
 	}
 
 	// Stop if any package had errors.
-	if packages.PrintErrors(initial) > 0 {
+	if packages.PrintErrors(c.targetPackages) > 0 {
 		c.failf("typechecking of %v failed", pkg)
 	}
 
-	c.pkgs = initial
+	c.runtimePackage, err = packages.Load(cfg, "github.com/bradleyjkemp/simple-fuzz/runtime")
+	if err != nil {
+		c.failf("cloud not load runtime package: %v", err)
+	}
 }
 
 // isFuzzSig reports whether sig is of the form
@@ -245,7 +249,7 @@ func (c *Context) populateWorkdir() {
 	// we could instead just os.MkdirAll and copy non-Go files here.
 	// We'd still need to do a full package clone for packages that
 	// we aren't instrumenting (c.ignore).
-	packages.Visit(c.pkgs, nil, func(p *packages.Package) {
+	packages.Visit(c.runtimePackage, nil, func(p *packages.Package) {
 		c.clonePackage(p)
 	})
 }
@@ -387,13 +391,14 @@ func (c *Context) packagesNamed(paths ...string) (pkgs []*packages.Package) {
 		}
 		return len(pkgs) < len(paths) // continue only if we have not succeeded yet
 	}
-	packages.Visit(c.pkgs, pre, nil)
+	packages.Visit(append(c.targetPackages, c.runtimePackage...), pre, nil)
 	return pkgs
 }
 
 func (c *Context) instrumentPackages() []string {
 	var fuzzTargets []string
 	visit := func(pkg *packages.Package) {
+		c.clonePackage(pkg) // TODO: avoid copying files that are immediately re-written
 		if c.ignore[pkg.PkgPath] {
 			return
 		}
@@ -432,7 +437,7 @@ func (c *Context) instrumentPackages() []string {
 		}
 	}
 
-	packages.Visit(c.pkgs, nil, visit)
+	packages.Visit(c.targetPackages, nil, visit)
 	return fuzzTargets
 }
 

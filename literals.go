@@ -26,7 +26,7 @@ func (c *Context) gatherLiterals() []string {
 		}
 	}
 
-	packages.Visit(c.pkgs, nil, visit)
+	packages.Visit(c.targetPackages, nil, visit)
 
 	litsList := make([]string, 0, len(lits))
 	for lit, _ := range lits {
