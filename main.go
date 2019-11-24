@@ -10,7 +10,6 @@ import (
 	"go/ast"
 	"go/parser"
 	"go/token"
-	"go/types"
 	"io/ioutil"
 	"os"
 	"os/exec"
@@ -165,23 +164,12 @@ func (c *Context) loadPkg(pkg string) {
 	}
 }
 
-// isFuzzSig reports whether sig is of the form
-//   func FuzzFunc(data []byte) int
-func isFuzzSig(sig *types.Signature) bool {
-	return sig.Params().Len() == 1 && sig.Params().At(0).Type().String() == "[]byte" &&
-		sig.Results().Len() == 1 && sig.Results().At(0).Type().String() == "int"
-}
-
-func isFuzzFuncName(name string) bool {
-	return isTest(name, "Fuzz")
-}
-
-// isTest is copied verbatim, along with its name,
-// from GOROOT/src/cmd/go/internal/load/test.go.
+// Based on isTest from GOROOT/src/cmd/go/internal/load/test.go.
 // isTest tells whether name looks like a test (or benchmark, according to prefix).
 // It is a Test (say) if there is a character after Test that is not a lower-case letter.
 // We don't want TesticularCancer.
-func isTest(name, prefix string) bool {
+func isFuzzFuncName(name string) bool {
+	prefix := "Fuzz"
 	if !strings.HasPrefix(name, prefix) {
 		return false
 	}
