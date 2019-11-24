@@ -122,25 +122,13 @@ func (c *Context) isIgnored(pkg string) bool {
 
 // getEnv determines GOROOT and GOPATH and updates c accordingly.
 func (c *Context) getEnv() {
-	env := map[string]string{
-		"GOROOT": "",
-		"GOPATH": "",
+	out, err := exec.Command("go", "env", "GOROOT", "GOPATH").CombinedOutput()
+	if err != nil || len(out) == 0 {
+		c.failf("failed to locate GOROOT/GOPATH: 'go env' returned '%s' (%v)", out, err)
 	}
-	for k := range env {
-		v := os.Getenv(k)
-		if v != "" {
-			env[k] = v
-			continue
-		}
-		// TODO: make a single call ("go env GOROOT GOPATH") instead
-		out, err := exec.Command("go", "env", k).CombinedOutput()
-		if err != nil || len(out) == 0 {
-			c.failf("%s is not set and failed to locate it: 'go env %s' returned '%s' (%v)", k, k, out, err)
-		}
-		env[k] = strings.TrimSpace(string(out))
-	}
-	c.GOROOT = env["GOROOT"]
-	c.GOPATH = env["GOPATH"]
+	envs := strings.Split(string(out), "\n")
+	c.GOROOT = envs[0]
+	c.GOPATH = envs[1]
 }
 
 // loadPkg loads, parses, and typechecks pkg (the package containing the Fuzz function),
