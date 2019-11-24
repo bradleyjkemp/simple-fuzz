@@ -114,6 +114,12 @@ type Context struct {
 	GOPATH  string
 }
 
+func (c *Context) isIgnored(pkg string) bool {
+	return strings.HasPrefix(pkg, "internal/") ||
+		strings.HasPrefix(pkg, "runtime/") ||
+		c.ignore[pkg]
+}
+
 // getEnv determines GOROOT and GOPATH and updates c accordingly.
 func (c *Context) getEnv() {
 	env := map[string]string{
@@ -269,20 +275,14 @@ func (c *Context) buildInstrumentedBinary() {
 }
 
 func (c *Context) calcIgnore() {
-	// No reason to instrument these.
-	c.ignore = map[string]bool{
-		"runtime/cgo":   true,
-		"runtime/pprof": true,
-		"runtime/race":  true,
-	}
-
-	// Roots: must not instrument these, nor any of their dependencies, to avoid import cycles.
-	// Fortunately, these are mostly packages that are non-deterministic,
-	// noisy (because they are low level), and/or not interesting.
-	// We could manually maintain this list, but that makes go-fuzz-build
-	// fragile in the face of internal standard library package changes.
-	roots := c.packagesNamed("runtime", "github.com/bradleyjkemp/simple-fuzz/runtime")
-	packages.Visit(roots, func(p *packages.Package) bool {
+	c.ignore = map[string]bool{}
+	// These are either incredibly noisy or break when instrumented
+	badPackages := c.packagesNamed(
+		"os",
+		"syscall",
+		"bytes",
+	)
+	packages.Visit(badPackages, func(p *packages.Package) bool {
 		c.ignore[p.PkgPath] = true
 		return true
 	}, nil)
@@ -399,7 +399,7 @@ func (c *Context) instrumentPackages() []string {
 	var fuzzTargets []string
 	visit := func(pkg *packages.Package) {
 		c.clonePackage(pkg) // TODO: avoid copying files that are immediately re-written
-		if c.ignore[pkg.PkgPath] {
+		if c.isIgnored(pkg.PkgPath) {
 			return
 		}
 

@@ -18,7 +18,7 @@ func (c *Context) gatherLiterals() []string {
 
 	lits := make(map[string]struct{})
 	visit := func(pkg *packages.Package) {
-		if c.ignore[pkg.PkgPath] || nolits[pkg.PkgPath] {
+		if c.isIgnored(pkg.PkgPath) || nolits[pkg.PkgPath] {
 			return
 		}
 		for _, f := range pkg.Syntax {
