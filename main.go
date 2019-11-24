@@ -133,7 +133,15 @@ func (c *Context) loadPkg(pkgs []string) {
 	// This also provides better error messages in the case
 	// of invalid code than trying to compile instrumented code.
 	cfg := basePackagesConfig()
-	cfg.Mode = packages.LoadAllSyntax
+	cfg.Mode = packages.NeedName |
+		packages.NeedFiles |
+		packages.NeedCompiledGoFiles |
+		packages.NeedImports |
+		packages.NeedTypes |
+		packages.NeedTypesSizes |
+		packages.NeedSyntax |
+		packages.NeedTypesInfo |
+		packages.NeedDeps
 	// use custom ParseFile in order to get comments
 	cfg.ParseFile = func(fset *token.FileSet, filename string, src []byte) (*ast.File, error) {
 		return parser.ParseFile(fset, filename, src, parser.ParseComments)
