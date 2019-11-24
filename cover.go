@@ -51,7 +51,10 @@ func instrumentAST(node ast.Node) bool {
 			// this is just a function declaration, it is implemented elsewhere
 			return false
 		}
-		n.Body.List = append([]ast.Stmt{newCounter()}, n.Body.List...)
+		// Add a declaration of:
+		//   PreviousLocationID := 0
+		// And a counter
+		n.Body.List = append([]ast.Stmt{newLastLocation(), newCounter()}, n.Body.List...)
 
 	// Single case: inside a switch statement
 	case *ast.CaseClause:
@@ -128,12 +131,34 @@ func addCoverageImport(astFile *ast.File) {
 	astFile.Decls = append(astFile.Decls, reference)
 }
 
+func newLastLocation() ast.Stmt {
+	return &ast.DeclStmt{Decl: &ast.GenDecl{
+		Tok: token.VAR,
+		Specs: []ast.Spec{
+			&ast.ValueSpec{
+				Names: []*ast.Ident{
+					ast.NewIdent("PreviousLocationID"),
+				},
+				Values: []ast.Expr{
+					&ast.BasicLit{
+						Kind:  token.INT,
+						Value: "0",
+					},
+				},
+				Comment: nil,
+			},
+		},
+	}}
+}
+
 // Returns the expression:
 // {
 //    CoverTab[<generatedLocationID> ^ PreviousLocationID]++
 //	  PreviousLocationID = <generatedLocationID> >> 1
 // }
-// As implemented in AFL to get pseudo path coverage
+// As implemented in AFL to get pseudo path coverage.
+// PreviousLocationID is a function-local variable (as global variables
+// cause noise with goroutines)
 func newCounter() ast.Stmt {
 	currentLocation := rand.Intn(coverage.CoverSize)
 
@@ -141,10 +166,7 @@ func newCounter() ast.Stmt {
 		Kind:  token.INT,
 		Value: strconv.Itoa(currentLocation),
 	}
-	previousLocation := &ast.SelectorExpr{
-		X:   ast.NewIdent(fuzzdepPkg),
-		Sel: ast.NewIdent("PreviousLocationID"),
-	}
+	previousLocation := ast.NewIdent("PreviousLocationID")
 
 	// CoverTab[currentID ^ previousLocation]
 	counter := &ast.IndexExpr{

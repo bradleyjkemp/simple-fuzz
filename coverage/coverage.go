@@ -15,13 +15,6 @@ const (
 // time for actual instrumentation to commence.
 var CoverTab [CoverSize]byte
 
-// PreviousLocationID stores the id of the previous coverage point.
-// This is combined with the current id to decide which entry in the CoverTab
-// to increment in the instrumented code.
-// This is done to get a cheap approximation of path coverage instead of
-// simply line coverage.
-var PreviousLocationID int
-
 // These are populated by an init() function generated during build
 var Literals []string
 var FuzzFunctions = map[string]func([]byte) int{}
