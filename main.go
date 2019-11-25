@@ -485,14 +485,6 @@ func (c *Context) failf(str string, args ...interface{}) {
 	os.Exit(1)
 }
 
-func (c *Context) readFile(name string) []byte {
-	data, err := ioutil.ReadFile(name)
-	if err != nil {
-		c.failf("failed to read temp file: %v", err)
-	}
-	return data
-}
-
 func (c *Context) writeFile(name string, data []byte) {
 	if err := ioutil.WriteFile(name, data, 0700); err != nil {
 		c.failf("failed to write temp file: %v", err)
