@@ -39,7 +39,6 @@ func main() {
 	}
 
 	c.loadPkg(pkgs)                        // load and typecheck pkg
-	c.getEnv()                             // discover GOROOT, GOPATH
 	c.calcIgnore()                         // calculate set of packages to ignore
 	c.makeWorkdir()                        // create workdir
 	defer os.RemoveAll(c.workdir)          // delete workdir
@@ -62,22 +61,12 @@ type Context struct {
 	ignore map[string]bool // set of packages to ignore during instrumentation
 
 	workdir string
-	GOROOT  string
 }
 
 func (c *Context) isIgnored(pkg string) bool {
 	return strings.HasPrefix(pkg, "internal/") ||
 		strings.HasPrefix(pkg, "runtime/") ||
 		c.ignore[pkg]
-}
-
-// getEnv determines GOROOT and GOPATH and updates c accordingly.
-func (c *Context) getEnv() {
-	out, err := exec.Command("go", "env", "GOROOT").CombinedOutput()
-	if err != nil || len(out) == 0 {
-		c.failf("failed to locate GOROOT/GOPATH: 'go env' returned '%s' (%v)", out, err)
-	}
-	c.GOROOT = strings.Trim(string(out), "\n")
 }
 
 // loadPkg loads, parses, and typechecks pkg (the package containing the Fuzz function),
@@ -145,6 +134,11 @@ func (c *Context) makeWorkdir() {
 
 // populateWorkdir prepares workdir for builds.
 func (c *Context) populateWorkdir() {
+	out, err := exec.Command("go", "env", "GOROOT").CombinedOutput()
+	if err != nil || len(out) == 0 {
+		c.failf("failed to locate GOROOT/GOPATH: 'go env' returned '%s' (%v)", out, err)
+	}
+	goroot := strings.Trim(string(out), "\n")
 	// TODO: instead of reconstructing the world,
 	// can we use a bunch of replace directives in a go.mod?
 
@@ -154,12 +148,12 @@ func (c *Context) populateWorkdir() {
 
 	// TODO: See if we can avoid making toolchain copies,
 	// using some combination of env vars and toolexec.
-	c.copyDir(filepath.Join(c.GOROOT, "pkg", "tool"), filepath.Join(c.workdir, "goroot", "pkg", "tool"))
-	if _, err := os.Stat(filepath.Join(c.GOROOT, "pkg", "include")); err == nil {
-		c.copyDir(filepath.Join(c.GOROOT, "pkg", "include"), filepath.Join(c.workdir, "goroot", "pkg", "include"))
+	c.copyDir(filepath.Join(goroot, "pkg", "tool"), filepath.Join(c.workdir, "goroot", "pkg", "tool"))
+	if _, err := os.Stat(filepath.Join(goroot, "pkg", "include")); err == nil {
+		c.copyDir(filepath.Join(goroot, "pkg", "include"), filepath.Join(c.workdir, "goroot", "pkg", "include"))
 	} else {
 		// Cross-compilation is not implemented.
-		c.copyDir(filepath.Join(c.GOROOT, "pkg", runtime.GOOS+"_"+runtime.GOARCH), filepath.Join(c.workdir, "goroot", "pkg", runtime.GOOS+"_"+runtime.GOARCH))
+		c.copyDir(filepath.Join(goroot, "pkg", runtime.GOOS+"_"+runtime.GOARCH), filepath.Join(c.workdir, "goroot", "pkg", runtime.GOOS+"_"+runtime.GOARCH))
 	}
 
 	// Clone our package, go-fuzz-deps, and all dependencies.
@@ -248,8 +242,7 @@ func (c *Context) createGeneratedFiles(fuzzPackages []string) {
 }
 
 func (c *Context) clonePackage(p *packages.Package) {
-	root := "goroot"
-	newDir := filepath.Join(c.workdir, root, "src", p.PkgPath)
+	newDir := filepath.Join(c.workdir, "goroot", "src", p.PkgPath)
 	c.mkdirAll(newDir)
 
 	if p.PkgPath == "unsafe" {
