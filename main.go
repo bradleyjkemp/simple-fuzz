@@ -26,7 +26,6 @@ import (
 
 var (
 	flagOut      = flag.String("o", "", "if set, output the fuzzer binary to this file instead of running it")
-	shouldRun    = false
 	flagPreserve = flag.String("preserve", "", "a comma-separated list of import paths not to instrument")
 )
 
@@ -48,22 +47,19 @@ func main() {
 		pkgs = []string{"."}
 	}
 
-	c.loadPkg(pkgs)               // load and typecheck pkg
-	c.getEnv()                    // discover GOROOT, GOPATH
-	c.loadStd()                   // load standard library
-	c.calcIgnore()                // calculate set of packages to ignore
-	c.makeWorkdir()               // create workdir
-	defer os.RemoveAll(c.workdir) // delete workdir
-	c.populateWorkdir()           // copy tools and packages to workdir as needed
-
-	if *flagOut == "" {
-		*flagOut = filepath.Join(os.TempDir(), c.targetPackages[0].Name+"-fuzz")
-		shouldRun = true
-	}
+	c.loadPkg(pkgs)                        // load and typecheck pkg
+	c.getEnv()                             // discover GOROOT, GOPATH
+	c.loadStd()                            // load standard library
+	c.calcIgnore()                         // calculate set of packages to ignore
+	c.makeWorkdir()                        // create workdir
+	defer os.RemoveAll(c.workdir)          // delete workdir
+	c.populateWorkdir()                    // copy tools and packages to workdir as needed
+	fuzzPackages := c.instrumentPackages() // instrument target packages and find fuzz funcs
+	c.createGeneratedFiles(fuzzPackages)   // create the files to register targets with the fuzzer
 
 	// Gather literals, instrument, and compile.
 	// Order matters here!
-	// buildInstrumentedBinary (and instrumentPackages) modify the AST.
+	// buildFuzzer (and instrumentPackages) modify the AST.
 	// (We don't want to re-parse and re-typecheck every time, for performance.)
 	// So we gather literals first, while the AST is pristine.
 	// Then we add coverage and build.
@@ -77,22 +73,10 @@ func main() {
 	// go/printer handles this automatically using Mode printer.SourcePos.
 	// We'd need to implement that support ourselves. (It's do-able but non-trivial.)
 	// See also https://golang.org/issue/29824.
-	c.buildInstrumentedBinary()
-	if shouldRun {
-		cmd := exec.Command(*flagOut)
-		cmd.Stdout = os.Stdout
-		cmd.Stderr = os.Stderr
-		cmd.Start()
-
-		c := make(chan os.Signal)
-		signal.Notify(c, os.Interrupt)
-		go func() {
-			sig := <-c
-			cmd.Process.Signal(sig)
-			os.RemoveAll(*flagOut)
-		}()
-		cmd.Wait()
+	if *flagOut == "" {
+		c.runFuzzer()
 	}
+	c.buildFuzzer()
 }
 
 // Context holds state for a go-fuzz-build run.
@@ -239,9 +223,28 @@ func (c *Context) populateWorkdir() {
 	})
 }
 
-func (c *Context) buildInstrumentedBinary() {
-	fuzzPackages := c.instrumentPackages()
-	c.createGeneratedFiles(fuzzPackages)
+func (c *Context) runFuzzer() {
+	cmd := exec.Command("go", "run", "-trimpath", "github.com/bradleyjkemp/simple-fuzz/runtime")
+	cmd.Env = append(os.Environ(),
+		"GOROOT="+filepath.Join(c.workdir, "goroot"),
+		"GOPATH="+filepath.Join(c.workdir, "gopath"),
+		"GO111MODULE=off", // we have constructed a non-module, GOPATH environment
+	)
+	cmd.Stdout = os.Stdout
+	cmd.Stderr = os.Stderr
+	cmd.Start()
+
+	ctx := make(chan os.Signal)
+	signal.Notify(ctx, os.Interrupt)
+	go func() {
+		sig := <-ctx
+		cmd.Process.Signal(sig)
+		os.RemoveAll(*flagOut)
+	}()
+	cmd.Wait()
+}
+
+func (c *Context) buildFuzzer() {
 	cmd := exec.Command("go", "build", "-trimpath", "-o", *flagOut, "github.com/bradleyjkemp/simple-fuzz/runtime")
 	cmd.Env = append(os.Environ(),
 		"GOROOT="+filepath.Join(c.workdir, "goroot"),
