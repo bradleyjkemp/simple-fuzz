@@ -19,46 +19,39 @@ const (
 	syncPeriod = 3 * time.Second
 )
 
-type Input struct {
-	data  []byte
-	cover []byte
-	res   int
-}
-
 // triageInput processes every new input.
 // It calculates per-input metrics like execution time, coverage mask,
 // and minimizes the input to the minimal input with the same coverage.
-func (f *Fuzzer) triageInput(input Input) {
-	if len(input.data) > MaxInputSize {
-		input.data = input.data[:MaxInputSize]
+func (f *Fuzzer) triageInput(data []byte) {
+	if len(data) > MaxInputSize {
+		data = data[:MaxInputSize]
 	}
-	if _, ok := f.badInputs[hash(input.data)]; ok {
+	if _, ok := f.badInputs[hash(data)]; ok {
 		return // don't want to run any inputs known to hang
 	}
 
-	res, cover, output, crashed, hanged := f.runFuzzFunc(input.data)
+	inputResult, cover, output, crashed, hanged := f.runFuzzFunc(data)
 	if crashed {
 		// Inputs in corpus should not crash.
-		f.noteCrasher(input.data, output, hanged)
+		f.noteCrasher(data, output, hanged)
 		return
 	}
 
-	input.res = res
-	input.cover = make([]byte, CoverSize)
-	copy(input.cover, cover) // cover is shared memory so needs to be copied
+	inputcover := make([]byte, CoverSize)
+	copy(inputcover, cover) // cover is shared memory so needs to be copied
 
 	// Only want input if it hits something new
-	if !compareCover(f.maxCover, input.cover) {
+	if !compareCover(f.maxCover, inputcover) {
 		return
 	}
 
-	targetCover := findNewCover(f.maxCover, cover)
-	input.data = f.minimizeInput(input.data, false, func(candidate, cover, output []byte, res int, crashed, hanged bool) bool {
+	targetCover := findNewCover(f.maxCover, inputcover)
+	data = f.minimizeInput(data, false, func(candidate, cover, output []byte, res int, crashed, hanged bool) bool {
 		if crashed {
 			f.noteCrasher(candidate, output, hanged)
 			return false
 		}
-		if input.res != res {
+		if inputResult != res {
 			f.noteNewInput(candidate, cover, res)
 			return false
 		}
@@ -73,8 +66,8 @@ func (f *Fuzzer) triageInput(input Input) {
 	})
 
 	f.lastInput = time.Now()
-	f.storage.addInput(input.data)
-	corpusCoverSize := updateMaxCover(f.maxCover, input.cover)
+	f.storage.addInput(data)
+	corpusCoverSize := updateMaxCover(f.maxCover, inputcover)
 	if f.coverFullness < corpusCoverSize {
 		f.coverFullness = corpusCoverSize
 	}
@@ -220,7 +213,7 @@ func (f *Fuzzer) noteNewInput(data, cover []byte, res int) {
 		return
 	}
 	if compareCover(f.maxCover, cover) {
-		f.triageQueue = append(f.triageQueue, Input{data: makeCopy(data)})
+		f.triageQueue = append(f.triageQueue, makeCopy(data))
 	}
 }
 

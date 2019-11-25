@@ -18,7 +18,7 @@ type Fuzzer struct {
 
 	mutator *Mutator
 
-	triageQueue  []Input
+	triageQueue  [][]byte
 	crasherQueue []NewCrasherArgs
 
 	lastSync time.Time

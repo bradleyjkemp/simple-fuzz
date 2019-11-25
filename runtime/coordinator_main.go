@@ -84,7 +84,7 @@ func main() {
 			break
 		}
 		w.broadcastStats()
-		w.triageInput(Input{data: a})
+		w.triageInput(a)
 	}
 
 	for shutdown.Err() == nil {
@@ -108,7 +108,7 @@ func main() {
 			input := w.triageQueue[0]
 			w.triageQueue = w.triageQueue[1:]
 			if *flagV >= 2 {
-				log.Printf("worker triages local input [%v]%x", len(input.data), hash(input.data))
+				log.Printf("worker triages local input [%v]%x", len(input), hash(input))
 			}
 			w.triageInput(input)
 			continue
@@ -116,7 +116,7 @@ func main() {
 
 		// Plain old blind fuzzing.
 		data := w.mutator.generate(w.storage.corpusInputs, w.lits)
-		w.triageInput(Input{data: data})
+		w.triageInput(data)
 	}
 }
 
