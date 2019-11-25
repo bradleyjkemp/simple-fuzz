@@ -34,7 +34,8 @@ type crasherMetadata struct {
 	Suppression string
 }
 
-func newStorage(dir string) (*storage, error) {
+func newStorage() (*storage, error) {
+	dir := "."
 	crashersDir := filepath.Join(dir, "crashers")
 	corpusDir := filepath.Join(dir, "corpus")
 	s := &storage{

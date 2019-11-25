@@ -11,8 +11,6 @@ import (
 	"log"
 	"os"
 	"os/signal"
-	"os/user"
-	"path/filepath"
 	"runtime/debug"
 	"runtime/pprof"
 	"strconv"
@@ -23,7 +21,6 @@ import (
 )
 
 var (
-	flagWorkdir  = flag.String("workdir", ".", "dir with persistent work data")
 	flagMinimize = flag.Duration("minimize", 1*time.Minute, "time limit for input minimization")
 	flagDup      = flag.Bool("dup", false, "collect duplicate crashers")
 	flagV        = flag.Int("v", 0, "verbosity level")
@@ -48,8 +45,7 @@ func main() {
 
 	debug.SetGCPercent(50) // most memory is in large binary blobs
 
-	*flagWorkdir = expandHomeDir(*flagWorkdir)
-	s, err := newStorage(*flagWorkdir)
+	s, err := newStorage()
 	if err != nil {
 		fmt.Println("Failed to load data:", err)
 		os.Exit(1)
@@ -127,14 +123,4 @@ func (f *Fuzzer) watchForHangingInputs() {
 			panic(output)
 		}
 	}
-}
-
-// expandHomeDir expands the tilde sign and replaces it
-// with current users home directory and returns it.
-func expandHomeDir(path string) string {
-	if len(path) > 2 && path[:2] == "~/" {
-		usr, _ := user.Current()
-		path = filepath.Join(usr.HomeDir, path[2:])
-	}
-	return path
 }
