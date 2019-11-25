@@ -54,69 +54,64 @@ func main() {
 		fmt.Println("Failed to load data:", err)
 		os.Exit(1)
 	}
-	w := &Fuzzer{
-		startTime:      time.Now(),
-		lastInput:      time.Now(),
-		storage:        s,
-		badInputs:      make(map[Sig]struct{}),
-		suppressedSigs: make(map[Sig]struct{}),
-		fuzzFunc:       fuzzFunc,
-		lastExec:       time.Now(),
+	f := &Fuzzer{
+		badInputs:        make(map[Sig]struct{}),
+		suppressedSigs:   make(map[Sig]struct{}),
+		maxCover:         make([]byte, CoverSize),
+		fuzzFunc:         fuzzFunc,
+		mutator:          newMutator(),
+		lastSync:         time.Time{},
+		storage:          s,
+		startTime:        time.Now(),
+		lastInput:        time.Now(),
+		currentCandidate: nil,
+		lastExec:         time.Now(),
 	}
-	go w.watchForHangingInputs()
+	go f.watchForHangingInputs()
 
-	if len(w.storage.corpus) == 0 {
-		w.storage.addInput([]byte{})
+	if len(f.storage.corpus) == 0 {
+		f.storage.addInput([]byte{})
 	}
-
-	// Prepare list of string and integer literals.
-	for _, lit := range Literals {
-		w.lits = append(w.lits, []byte(lit))
-	}
-
-	w.maxCover = make([]byte, CoverSize)
-
-	w.mutator = newMutator()
 
 	//Triage the initial corpus.
-	for _, a := range w.storage.corpus {
+	for _, a := range f.storage.corpus {
 		if shutdown.Err() != nil {
 			break
 		}
-		w.broadcastStats()
-		w.triageInput(a)
+		f.broadcastStats()
+		f.triageInput(a)
 	}
 
 	for shutdown.Err() == nil {
-		w.broadcastStats()
+		f.broadcastStats()
 		if *flagV >= 1 {
-			log.Printf("worker loop crasherQueue=%d triageQueue=%d", len(w.crasherQueue), len(w.triageQueue))
+			log.Printf("worker loop crasherQueue=%d triageQueue=%d", len(f.crasherQueue), len(f.triageQueue))
 		}
-		if len(w.crasherQueue) > 0 {
-			n := len(w.crasherQueue) - 1
-			crash := w.crasherQueue[n]
-			w.crasherQueue[n] = NewCrasherArgs{}
-			w.crasherQueue = w.crasherQueue[:n]
+		if len(f.crasherQueue) > 0 {
+			n := len(f.crasherQueue) - 1
+			crash := f.crasherQueue[n]
+			f.crasherQueue[n] = NewCrasherArgs{}
+			f.crasherQueue = f.crasherQueue[:n]
 			if *flagV >= 2 {
 				log.Printf("worker processes crasher [%v]%x", len(crash.Data), hash(crash.Data))
 			}
-			w.processCrasher(crash)
+			f.processCrasher(crash)
 			continue
 		}
 
-		if len(w.triageQueue) > 0 {
-			input := w.triageQueue[0]
-			w.triageQueue = w.triageQueue[1:]
+		if len(f.triageQueue) > 0 {
+			input := f.triageQueue[0]
+			f.triageQueue = f.triageQueue[1:]
 			if *flagV >= 2 {
 				log.Printf("worker triages local input [%v]%x", len(input), hash(input))
 			}
-			w.triageInput(input)
+			f.triageInput(input)
 			continue
 		}
 
 		// Plain old blind fuzzing.
-		data := w.mutator.generate(w.storage.corpusInputs, w.lits)
-		w.triageInput(data)
+		data := f.mutator.generate(f.storage.corpusInputs, Literals)
+		f.triageInput(data)
 	}
 }
 

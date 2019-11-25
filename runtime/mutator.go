@@ -46,7 +46,7 @@ func (m *Mutator) randByteOrder() binary.ByteOrder {
 	return binary.BigEndian
 }
 
-func (m *Mutator) generate(corpus [][]byte, lits [][]byte) []byte {
+func (m *Mutator) generate(corpus [][]byte, lits []string) []byte {
 	data := corpus[m.rand(len(corpus))]
 	res := make([]byte, len(data))
 	copy(res, data)
@@ -349,7 +349,7 @@ func (m *Mutator) generate(corpus [][]byte, lits [][]byte) []byte {
 				iter--
 				continue
 			}
-			lit := lits[m.rand(len(lits))]
+			lit := []byte(lits[m.rand(len(lits))])
 			if m.rand(3) == 0 {
 				lit = reverse(lit)
 			}
@@ -366,7 +366,7 @@ func (m *Mutator) generate(corpus [][]byte, lits [][]byte) []byte {
 				iter--
 				continue
 			}
-			lit := lits[m.rand(len(lits))]
+			lit := []byte(lits[m.rand(len(lits))])
 			if m.rand(3) == 0 {
 				lit = reverse(lit)
 			}

@@ -12,7 +12,6 @@ import (
 type Fuzzer struct {
 	badInputs      map[Sig]struct{}
 	suppressedSigs map[Sig]struct{}
-	lits           [][]byte // string/int literals in testee
 	maxCover       []byte
 	fuzzFunc       func([]byte) int
 
