@@ -71,7 +71,6 @@ type Context struct {
 
 	workdir string
 	GOROOT  string
-	GOPATH  string
 }
 
 func (c *Context) isIgnored(pkg string) bool {
@@ -82,13 +81,11 @@ func (c *Context) isIgnored(pkg string) bool {
 
 // getEnv determines GOROOT and GOPATH and updates c accordingly.
 func (c *Context) getEnv() {
-	out, err := exec.Command("go", "env", "GOROOT", "GOPATH").CombinedOutput()
+	out, err := exec.Command("go", "env", "GOROOT").CombinedOutput()
 	if err != nil || len(out) == 0 {
 		c.failf("failed to locate GOROOT/GOPATH: 'go env' returned '%s' (%v)", out, err)
 	}
-	envs := strings.Split(string(out), "\n")
-	c.GOROOT = envs[0]
-	c.GOPATH = envs[1]
+	c.GOROOT = strings.Trim(string(out), "\n")
 }
 
 // loadPkg loads, parses, and typechecks pkg (the package containing the Fuzz function),
