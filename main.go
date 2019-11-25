@@ -241,7 +241,7 @@ func (c *Context) populateWorkdir() {
 
 func (c *Context) buildInstrumentedBinary() {
 	fuzzPackages := c.instrumentPackages()
-	c.copyFuzzDep(fuzzPackages)
+	c.createGeneratedFiles(fuzzPackages)
 	cmd := exec.Command("go", "build", "-trimpath", "-o", *flagOut, "github.com/bradleyjkemp/simple-fuzz/runtime")
 	cmd.Env = append(os.Environ(),
 		"GOROOT="+filepath.Join(c.workdir, "goroot"),
@@ -273,25 +273,9 @@ func (c *Context) calcIgnore() {
 	}
 }
 
-func (c *Context) copyFuzzDep(fuzzPackages []string) {
-	// Standard library packages can't depend on non-standard ones.
-	// So we pretend that go-fuzz-dep is a standard one.
-	// go-fuzz-dep depends on go-fuzz-coverage, which creates a problem.
-	// Fortunately (and intentionally), go-fuzz-coverage contains only constants,
-	// which can be duplicated safely.
-	// So we eliminate the import statement and copy go-fuzz-coverage/defs.go
-	// directly into the go-fuzz-dep package.
-	runtimeDir := filepath.Join(c.workdir, "gopath", "src", "github.com", "bradleyjkemp", "simple-fuzz", "runtime")
-	c.mkdirAll(runtimeDir)
-	dep := c.packageNamed("github.com/bradleyjkemp/simple-fuzz/runtime")
-	for _, f := range dep.GoFiles {
-		data := c.readFile(f)
-		// Eliminate the dot import.
-		data = bytes.Replace(data, []byte(`. "github.com/bradleyjkemp/simple-fuzz/coverage"`), []byte(`. "coverage"`), -1)
-		c.writeFile(filepath.Join(runtimeDir, filepath.Base(f)), data)
-	}
-
-	// Runtime also needs to import all packages containing a fuzz function
+func (c *Context) createGeneratedFiles(fuzzPackages []string) {
+	// Runtime needs to import all packages containing a fuzz function
+	runtimeDir := filepath.Join(c.workdir, "gopath/src/github.com/bradleyjkemp/simple-fuzz/runtime")
 	imports := &bytes.Buffer{}
 	err := importsTmpl.Execute(imports, fuzzPackages)
 	if err != nil {
@@ -299,14 +283,8 @@ func (c *Context) copyFuzzDep(fuzzPackages []string) {
 	}
 	c.writeFile(filepath.Join(runtimeDir, "imports.go"), imports.Bytes())
 
-	coverageDir := filepath.Join(c.workdir, "goroot", "src", "coverage")
-	c.mkdirAll(coverageDir)
-	defs := c.packageNamed("github.com/bradleyjkemp/simple-fuzz/coverage")
-	for _, f := range defs.GoFiles {
-		data := c.readFile(f)
-		c.writeFile(filepath.Join(coverageDir, filepath.Base(f)), data)
-	}
-	// Now write the generated files that will populate Literals and Funcs
+	// Write the generated file that will populate Literals
+	coverageDir := filepath.Join(c.workdir, "gopath/src/github.com/bradleyjkemp/simple-fuzz/coverage")
 	lits := &bytes.Buffer{}
 	err = literalsTmpl.Execute(lits, c.gatherLiterals())
 	if err != nil {

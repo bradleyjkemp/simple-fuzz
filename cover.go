@@ -94,7 +94,7 @@ func addCoverageImport(astFile *ast.File) {
 		Name: ast.NewIdent(fuzzdepPkg),
 		Path: &ast.BasicLit{
 			Kind:  token.STRING,
-			Value: "\"coverage\"",
+			Value: "\"github.com/bradleyjkemp/simple-fuzz/coverage\"",
 		},
 	}
 	impDecl := &ast.GenDecl{
