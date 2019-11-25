@@ -40,27 +40,21 @@ func (f *Fuzzer) broadcastStats() {
 		return
 	}
 	f.lastSync = time.Now()
-	corpus := uint64(len(f.storage.corpus))
-	crashers := uint64(len(f.storage.crashers))
-	uptime := time.Since(f.startTime).Truncate(time.Second)
-	startTime := f.startTime
-	lastNewInputTime := f.lastInput
 
 	// Count all the cover entries that have a count
-	var cover uint64
+	var cover int
 	for _, v := range f.maxCover {
 		if v > 0 {
 			cover++
 		}
 	}
 
-	execsPerSec := float64(f.execs) * 1e9 / float64(time.Since(startTime))
-	// log to stdout
+	execsPerSec := float64(f.execs) * 1e9 / float64(time.Since(f.startTime))
 	fmt.Printf("corpus: %v (%v ago), crashers: %v,"+
 		" execs: %v (%.0f/sec), cover: %v, uptime: %v\n",
-		corpus, time.Since(lastNewInputTime).Truncate(time.Second),
-		crashers, f.execs, execsPerSec, cover,
-		uptime,
+		len(f.storage.corpus), time.Since(f.lastInput).Truncate(time.Second),
+		len(f.storage.crashers), f.execs, execsPerSec, cover,
+		time.Since(f.startTime).Truncate(time.Second),
 	)
 }
 
