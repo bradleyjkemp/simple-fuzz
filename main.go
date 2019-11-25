@@ -8,7 +8,6 @@ import (
 	"flag"
 	"fmt"
 	"go/ast"
-	"go/parser"
 	"go/token"
 	"io/ioutil"
 	"os"
@@ -96,7 +95,7 @@ func (c *Context) getEnv() {
 
 // loadPkg loads, parses, and typechecks pkg (the package containing the Fuzz function),
 // go-fuzz-dep, and their dependencies.
-func (c *Context) loadPkg(pkgs []string) {
+func (c *Context) loadPkg(targetPackages []string) {
 	// Load, parse, and type-check all packages.
 	// We'll use the type information later.
 	// This also provides better error messages in the case
@@ -111,28 +110,21 @@ func (c *Context) loadPkg(pkgs []string) {
 		packages.NeedSyntax |
 		packages.NeedTypesInfo |
 		packages.NeedDeps
-	// use custom ParseFile in order to get comments
-	cfg.ParseFile = func(fset *token.FileSet, filename string, src []byte) (*ast.File, error) {
-		return parser.ParseFile(fset, filename, src, parser.ParseComments)
-	}
-	// We need to load:
-	// * the target package, obviously
-	// * go-fuzz-runtime, since we use it for instrumentation
-	// * reflect, if we are using libfuzzer, since its generated main function requires it
+
 	var err error
-	c.targetPackages, err = packages.Load(cfg, pkgs...)
+	c.targetPackages, err = packages.Load(cfg, targetPackages...)
 	if err != nil {
 		c.failf("could not load packages: %v", err)
 	}
 
 	// Stop if any package had errors.
 	if packages.PrintErrors(c.targetPackages) > 0 {
-		c.failf("typechecking of %v failed", pkgs)
+		c.failf("typechecking of %v failed", targetPackages)
 	}
 
 	c.runtimePackage, err = packages.Load(cfg, "github.com/bradleyjkemp/simple-fuzz/runtime")
 	if err != nil {
-		c.failf("cloud not load runtime package: %v", err)
+		c.failf("could not load runtime package: %v", err)
 	}
 }
 
