@@ -360,7 +360,6 @@ func (c *Context) instrumentPackages() []string {
 
 			removeUnnecessaryComments(f, pkg.Fset)
 
-			buf := new(bytes.Buffer)
 			if registerFuzzFuncs(pkg.PkgPath, f) {
 				if !strings.Contains(pkg.PkgPath, "/internal/") {
 					// Internal packages cannot be imported directly by the runner
@@ -368,7 +367,9 @@ func (c *Context) instrumentPackages() []string {
 					fuzzTargets = append(fuzzTargets, pkg.PkgPath)
 				}
 			}
-			instrument(pkg.Fset, f, buf)
+			instrumentFile(f)
+			buf := new(bytes.Buffer)
+			astPrinter.Fprint(buf, pkg.Fset, f)
 			outpath := filepath.Join(path, fname)
 			c.writeFile(outpath, buf.Bytes())
 		}

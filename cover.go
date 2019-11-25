@@ -8,7 +8,6 @@ import (
 	"go/ast"
 	"go/printer"
 	"go/token"
-	"io"
 	"math/rand"
 	"strconv"
 	"strings"
@@ -24,52 +23,48 @@ var astPrinter = printer.Config{
 	Indent:   0,
 }
 
-func instrument(fset *token.FileSet, parsedFile *ast.File, out io.Writer) {
+func instrumentFile(parsedFile *ast.File) {
 	addCoverageImport(parsedFile)
-	ast.Inspect(parsedFile, instrumentAST)
+	ast.Inspect(parsedFile, func(node ast.Node) bool {
+		switch n := node.(type) {
+		case *ast.IfStmt:
+			// Add counter to the start of the if block
+			n.Body.List = append([]ast.Stmt{newCounter()}, n.Body.List...)
+			if n.Else == nil {
+				// If no else block, add an empty one (will be instrumented by recursion)
+				n.Else = &ast.BlockStmt{}
+			}
+			if e, ok := n.Else.(*ast.BlockStmt); ok {
+				// If bare else statement add a counter increment
+				e.List = append([]ast.Stmt{newCounter()}, e.List...)
+			}
+			// An else-if block is handled by recursion
 
-	astPrinter.Fprint(out, fset, parsedFile)
-}
+		case *ast.FuncDecl:
+			if n.Body == nil {
+				// this is just a function declaration, it is implemented elsewhere
+				return false
+			}
+			// Add a declaration of:
+			//   PreviousLocationID := 0
+			// And a counter
+			n.Body.List = append([]ast.Stmt{newLastLocation(), newCounter()}, n.Body.List...)
 
-func instrumentAST(node ast.Node) bool {
-	switch n := node.(type) {
-	case *ast.IfStmt:
-		// Add counter to the start of the if block
-		n.Body.List = append([]ast.Stmt{newCounter()}, n.Body.List...)
-		if n.Else == nil {
-			// If no else block, add an empty one (will be instrumented by recursion)
-			n.Else = &ast.BlockStmt{}
+		// Single case: inside a switch statement
+		case *ast.CaseClause:
+			n.Body = append([]ast.Stmt{newCounter()}, n.Body...)
+
+		// Single case: inside a select statement
+		case *ast.CommClause:
+			n.Body = append([]ast.Stmt{newCounter()}, n.Body...)
+
+		case *ast.ForStmt:
+			n.Body.List = append([]ast.Stmt{newCounter()}, n.Body.List...)
 		}
-		if e, ok := n.Else.(*ast.BlockStmt); ok {
-			// If bare else statement add a counter increment
-			e.List = append([]ast.Stmt{newCounter()}, e.List...)
-		}
-		// An else-if block is handled by recursion
 
-	case *ast.FuncDecl:
-		if n.Body == nil {
-			// this is just a function declaration, it is implemented elsewhere
-			return false
-		}
-		// Add a declaration of:
-		//   PreviousLocationID := 0
-		// And a counter
-		n.Body.List = append([]ast.Stmt{newLastLocation(), newCounter()}, n.Body.List...)
-
-	// Single case: inside a switch statement
-	case *ast.CaseClause:
-		n.Body = append([]ast.Stmt{newCounter()}, n.Body...)
-
-	// Single case: inside a select statement
-	case *ast.CommClause:
-		n.Body = append([]ast.Stmt{newCounter()}, n.Body...)
-
-	case *ast.ForStmt:
-		n.Body.List = append([]ast.Stmt{newCounter()}, n.Body.List...)
-	}
-
-	// Recurse deeper into the AST
-	return true
+		// Recurse deeper into the AST
+		return true
+	})
 }
 
 func removeUnnecessaryComments(file *ast.File, fset *token.FileSet) {
