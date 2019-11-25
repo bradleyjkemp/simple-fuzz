@@ -48,7 +48,6 @@ func main() {
 
 	c.loadPkg(pkgs)                        // load and typecheck pkg
 	c.getEnv()                             // discover GOROOT, GOPATH
-	c.loadStd()                            // load standard library
 	c.calcIgnore()                         // calculate set of packages to ignore
 	c.makeWorkdir()                        // create workdir
 	defer os.RemoveAll(c.workdir)          // delete workdir
@@ -68,7 +67,6 @@ type Context struct {
 	targetPackages []*packages.Package // typechecked root packages
 	runtimePackage []*packages.Package // the fuzzer itself
 
-	std    map[string]bool // set of packages in the standard library
 	ignore map[string]bool // set of packages to ignore during instrumentation
 
 	workdir string
@@ -142,21 +140,6 @@ func isFuzzFuncName(name string) bool {
 	}
 	rune, _ := utf8.DecodeRuneInString(name[len(prefix):])
 	return !unicode.IsLower(rune)
-}
-
-// loadStd finds the set of standard library package paths.
-func (c *Context) loadStd() {
-	// Find out what packages are in the standard library.
-	cfg := basePackagesConfig()
-	cfg.Mode = packages.NeedName
-	stdpkgs, err := packages.Load(cfg, "std")
-	if err != nil {
-		c.failf("could not load standard library: %v", err)
-	}
-	c.std = make(map[string]bool, len(stdpkgs))
-	for _, p := range stdpkgs {
-		c.std[p.PkgPath] = true
-	}
 }
 
 // makeWorkdir creates the workdir, logging as requested.
@@ -236,6 +219,7 @@ func (c *Context) buildFuzzer() {
 func (c *Context) calcIgnore() {
 	c.ignore = map[string]bool{}
 	// These are either incredibly noisy or break when instrumented
+
 	badPackages := c.packagesNamed(
 		"os",
 		"syscall",
@@ -255,7 +239,7 @@ func (c *Context) calcIgnore() {
 
 func (c *Context) createGeneratedFiles(fuzzPackages []string) {
 	// Runtime needs to import all packages containing a fuzz function
-	runtimeDir := filepath.Join(c.workdir, "gopath/src/github.com/bradleyjkemp/simple-fuzz/runtime")
+	runtimeDir := filepath.Join(c.workdir, "goroot/src/github.com/bradleyjkemp/simple-fuzz/runtime")
 	imports := &bytes.Buffer{}
 	err := importsTmpl.Execute(imports, fuzzPackages)
 	if err != nil {
@@ -264,7 +248,7 @@ func (c *Context) createGeneratedFiles(fuzzPackages []string) {
 	c.writeFile(filepath.Join(runtimeDir, "imports.go"), imports.Bytes())
 
 	// Write the generated file that will populate Literals
-	coverageDir := filepath.Join(c.workdir, "gopath/src/github.com/bradleyjkemp/simple-fuzz/coverage")
+	coverageDir := filepath.Join(c.workdir, "goroot/src/github.com/bradleyjkemp/simple-fuzz/coverage")
 	lits := &bytes.Buffer{}
 	err = literalsTmpl.Execute(lits, c.gatherLiterals())
 	if err != nil {
@@ -275,9 +259,6 @@ func (c *Context) createGeneratedFiles(fuzzPackages []string) {
 
 func (c *Context) clonePackage(p *packages.Package) {
 	root := "goroot"
-	if !c.std[p.PkgPath] {
-		root = "gopath"
-	}
 	newDir := filepath.Join(c.workdir, root, "src", p.PkgPath)
 	c.mkdirAll(newDir)
 
@@ -305,18 +286,6 @@ func (c *Context) clonePackage(p *packages.Package) {
 	// TODO: do we need to look for and copy go.mod?
 }
 
-// packageNamed extracts the package listed in path.
-func (c *Context) packageNamed(path string) (pkgs *packages.Package) {
-	all := c.packagesNamed(path)
-	if len(all) == 0 {
-		c.failf("got no packages matching %v", path)
-	}
-	if len(all) > 1 {
-		c.failf("got multiple packages, requested only %v", path)
-	}
-	return all[0]
-}
-
 // packagesNamed extracts the packages listed in paths.
 func (c *Context) packagesNamed(paths ...string) (pkgs []*packages.Package) {
 	pre := func(p *packages.Package) bool {
@@ -340,11 +309,7 @@ func (c *Context) instrumentPackages() []string {
 			return
 		}
 
-		root := "goroot"
-		if !c.std[pkg.PkgPath] {
-			root = "gopath"
-		}
-		path := filepath.Join(c.workdir, root, "src", pkg.PkgPath) // TODO: need filepath.FromSlash for pkg.PkgPath?
+		path := filepath.Join(c.workdir, "goroot", "src", pkg.PkgPath) // TODO: need filepath.FromSlash for pkg.PkgPath?
 
 		for i, fullName := range pkg.CompiledGoFiles {
 			fname := filepath.Base(fullName)
