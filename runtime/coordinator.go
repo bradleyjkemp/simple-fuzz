@@ -27,9 +27,8 @@ type Fuzzer struct {
 
 	storage *storage
 
-	startTime     time.Time
-	lastInput     time.Time
-	coverFullness int
+	startTime time.Time
+	lastInput time.Time
 
 	// Used to detect when inputs have caused a hang/infinite-loop
 	currentCandidate []byte
@@ -46,7 +45,14 @@ func (f *Fuzzer) broadcastStats() {
 	uptime := time.Since(f.startTime).Truncate(time.Second)
 	startTime := f.startTime
 	lastNewInputTime := f.lastInput
-	cover := uint64(f.coverFullness)
+
+	// Count all the cover entries that have a count
+	var cover uint64
+	for _, v := range f.maxCover {
+		if v > 0 {
+			cover++
+		}
+	}
 
 	execsPerSec := float64(f.execs) * 1e9 / float64(time.Since(startTime))
 	// log to stdout

@@ -67,10 +67,7 @@ func (f *Fuzzer) triageInput(data []byte) {
 
 	f.lastInput = time.Now()
 	f.storage.addInput(data)
-	corpusCoverSize := updateMaxCover(f.maxCover, inputcover)
-	if f.coverFullness < corpusCoverSize {
-		f.coverFullness = corpusCoverSize
-	}
+	updateMaxCover(f.maxCover, inputcover)
 }
 
 // processCrasher minimizes new crashers and sends them to the hub.
