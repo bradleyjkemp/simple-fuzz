@@ -57,26 +57,11 @@ func main() {
 	fuzzPackages := c.instrumentPackages() // instrument target packages and find fuzz funcs
 	c.createGeneratedFiles(fuzzPackages)   // create the files to register targets with the fuzzer
 
-	// Gather literals, instrument, and compile.
-	// Order matters here!
-	// buildFuzzer (and instrumentPackages) modify the AST.
-	// (We don't want to re-parse and re-typecheck every time, for performance.)
-	// So we gather literals first, while the AST is pristine.
-	// Then we add coverage and build.
-	// Then we add sonar and build.
-	// TODO: migrate to use cmd/internal/edit instead of AST modification.
-	// This has several benefits: (1) It is easier to work with.
-	// (2) 'go cover' has switched to it; we would get the benefit of
-	// upstream bug fixes, of which there has been at least one (around gotos and labels).
-	// (3) It leaves the AST intact, so we are less order-sensitive.
-	// The primary blocker is that we want good line numbers for when we find crashers.
-	// go/printer handles this automatically using Mode printer.SourcePos.
-	// We'd need to implement that support ourselves. (It's do-able but non-trivial.)
-	// See also https://golang.org/issue/29824.
 	if *flagOut == "" {
 		c.runFuzzer()
+	} else {
+		c.buildFuzzer()
 	}
-	c.buildFuzzer()
 }
 
 // Context holds state for a go-fuzz-build run.
