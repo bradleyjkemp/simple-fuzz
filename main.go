@@ -28,14 +28,6 @@ var (
 	flagPreserve = flag.String("preserve", "", "a comma-separated list of import paths not to instrument")
 )
 
-// basePackagesConfig returns a base golang.org/x/tools/go/packages.Config
-// that clients can then modify and use for calls to go/packages.
-func basePackagesConfig() *packages.Config {
-	cfg := new(packages.Config)
-	cfg.Env = os.Environ()
-	return cfg
-}
-
 // main copies the package with all dependent packages into a temp dir,
 // instruments Go source files there, and builds setting GOROOT to the temp dir.
 func main() {
@@ -95,16 +87,17 @@ func (c *Context) loadPkg(targetPackages []string) {
 	// We'll use the type information later.
 	// This also provides better error messages in the case
 	// of invalid code than trying to compile instrumented code.
-	cfg := basePackagesConfig()
-	cfg.Mode = packages.NeedName |
-		packages.NeedFiles |
-		packages.NeedCompiledGoFiles |
-		packages.NeedImports |
-		packages.NeedTypes |
-		packages.NeedTypesSizes |
-		packages.NeedSyntax |
-		packages.NeedTypesInfo |
-		packages.NeedDeps
+	cfg := &packages.Config{
+		Mode: packages.NeedName |
+			packages.NeedFiles |
+			packages.NeedCompiledGoFiles |
+			packages.NeedImports |
+			packages.NeedTypes |
+			packages.NeedTypesSizes |
+			packages.NeedSyntax |
+			packages.NeedTypesInfo |
+			packages.NeedDeps,
+	}
 
 	var err error
 	c.targetPackages, err = packages.Load(cfg, targetPackages...)
