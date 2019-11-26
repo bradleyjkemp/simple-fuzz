@@ -30,7 +30,7 @@ func (f *Fuzzer) triageInput(data []byte) {
 		return // don't want to run any inputs known to hang
 	}
 
-	inputResult, cover, output, crashed, hanged := f.runFuzzFunc(data)
+	cover, output, crashed, hanged := f.runFuzzFunc(data)
 	if crashed {
 		// Inputs in corpus should not crash.
 		f.noteCrasher(data, output, hanged)
@@ -46,13 +46,9 @@ func (f *Fuzzer) triageInput(data []byte) {
 	}
 
 	targetCover := findNewCover(f.maxCover, inputcover)
-	data = f.minimizeInput(data, false, func(candidate, cover, output []byte, res int, crashed, hanged bool) bool {
+	data = f.minimizeInput(data, false, func(candidate, cover, output []byte, crashed, hanged bool) bool {
 		if crashed {
 			f.noteCrasher(candidate, output, hanged)
-			return false
-		}
-		if inputResult != res {
-			f.noteNewInput(candidate, cover, res)
 			return false
 		}
 		// Minimised input is still good as long as its coverage
@@ -74,7 +70,7 @@ func (f *Fuzzer) triageInput(data []byte) {
 func (f *Fuzzer) processCrasher(crash NewCrasherArgs) {
 	// Hanging inputs can take very long time to minimize.
 	if !crash.Hanging {
-		crash.Data = f.minimizeInput(crash.Data, true, func(candidate, cover, output []byte, res int, crashed, hanged bool) bool {
+		crash.Data = f.minimizeInput(crash.Data, true, func(candidate, cover, output []byte, crashed, hanged bool) bool {
 			if !crashed {
 				return false
 			}
@@ -102,7 +98,7 @@ func (f *Fuzzer) processCrasher(crash NewCrasherArgs) {
 
 // minimizeInput applies series of minimizing transformations to data
 // and asks pred whether the input is equivalent to the original one or not.
-func (f *Fuzzer) minimizeInput(data []byte, canonicalize bool, pred func(candidate, cover, output []byte, result int, crashed, hanged bool) bool) []byte {
+func (f *Fuzzer) minimizeInput(data []byte, canonicalize bool, pred func(candidate, cover, output []byte, crashed, hanged bool) bool) []byte {
 	if *flagV >= 2 {
 		log.Printf("worker minimizes input [%v]%x", len(data), hash(data))
 	}
@@ -121,8 +117,8 @@ func (f *Fuzzer) minimizeInput(data []byte, canonicalize bool, pred func(candida
 				return res
 			}
 			candidate := res[:len(res)-n]
-			result, cover, output, crashed, hanged := f.runFuzzFunc(candidate)
-			if !pred(candidate, cover, output, result, crashed, hanged) {
+			cover, output, crashed, hanged := f.runFuzzFunc(candidate)
+			if !pred(candidate, cover, output, crashed, hanged) {
 				break
 			}
 			res = candidate
@@ -138,8 +134,8 @@ func (f *Fuzzer) minimizeInput(data []byte, canonicalize bool, pred func(candida
 		candidate := tmp[:len(res)-1]
 		copy(candidate[:i], res[:i])
 		copy(candidate[i:], res[i+1:])
-		result, cover, output, crashed, hanged := f.runFuzzFunc(candidate)
-		if !pred(candidate, cover, output, result, crashed, hanged) {
+		cover, output, crashed, hanged := f.runFuzzFunc(candidate)
+		if !pred(candidate, cover, output, crashed, hanged) {
 			continue
 		}
 		res = makeCopy(candidate)
@@ -155,8 +151,8 @@ func (f *Fuzzer) minimizeInput(data []byte, canonicalize bool, pred func(candida
 			}
 			candidate := tmp[:len(res)-j+i]
 			copy(candidate[i:], res[j:])
-			result, cover, output, crashed, hanged := f.runFuzzFunc(candidate)
-			if !pred(candidate, cover, output, result, crashed, hanged) {
+			cover, output, crashed, hanged := f.runFuzzFunc(candidate)
+			if !pred(candidate, cover, output, crashed, hanged) {
 				continue
 			}
 			res = makeCopy(candidate)
@@ -176,8 +172,8 @@ func (f *Fuzzer) minimizeInput(data []byte, canonicalize bool, pred func(candida
 			candidate := tmp[:len(res)]
 			copy(candidate, res)
 			candidate[i] = '0'
-			result, cover, output, crashed, hanged := f.runFuzzFunc(candidate)
-			if !pred(candidate, cover, output, result, crashed, hanged) {
+			cover, output, crashed, hanged := f.runFuzzFunc(candidate)
+			if !pred(candidate, cover, output, crashed, hanged) {
 				continue
 			}
 			res = makeCopy(candidate)
@@ -187,7 +183,7 @@ func (f *Fuzzer) minimizeInput(data []byte, canonicalize bool, pred func(candida
 	return res
 }
 
-func (f *Fuzzer) runFuzzFunc(input []byte) (result int, cover, output []byte, crashed, hanged bool) {
+func (f *Fuzzer) runFuzzFunc(input []byte) (cover, output []byte, crashed, hanged bool) {
 	f.execs++
 	f.currentCandidate = input
 	f.lastExec = time.Now()
@@ -199,7 +195,7 @@ func (f *Fuzzer) runFuzzFunc(input []byte) (result int, cover, output []byte, cr
 		}
 	}()
 	CoverTab = [CoverSize]byte{}
-	result = f.fuzzFunc(input[0:len(input):len(input)])
+	f.fuzzFunc(input[0:len(input):len(input)])
 	cover = (CoverTab)[:]
 	return
 }
