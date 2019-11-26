@@ -38,14 +38,15 @@ func main() {
 		pkgs = []string{"."}
 	}
 
-	c.loadPkg(pkgs)                               // load and typecheck pkg
-	ignored := c.calcIgnore()                     // calculate set of packages to ignore
-	c.makeWorkdir()                               // create workdir
-	defer os.RemoveAll(c.workdir)                 // delete workdir
-	c.populateWorkdir()                           // copy tools and packages to workdir as needed
-	fuzzPackages := c.instrumentPackages(ignored) // instrument target packages and find fuzz funcs
-	literals := c.gatherLiterals(ignored)
-	c.createGeneratedFiles(literals, fuzzPackages) // create the files to register targets with the fuzzer
+	targets, runtime := c.loadPkg(pkgs)                    // load and typecheck pkg
+	allPackages := append(targets, runtime...)             // sometimes need everything TODO: deduplicate these
+	ignored := c.calcIgnore(allPackages)                   // calculate set of packages to ignore
+	c.makeWorkdir()                                        // create workdir
+	defer os.RemoveAll(c.workdir)                          // delete workdir
+	c.populateWorkdir(runtime)                             // copy tools and packages to workdir as needed
+	literals := c.gatherLiterals(targets, ignored)         // Collect all int/string literals in targets+dependencies
+	fuzzPackages := c.instrumentPackages(targets, ignored) // instrument target packages and find fuzz funcs
+	c.createGeneratedFiles(literals, fuzzPackages)         // create the files to register targets with the fuzzer
 
 	if *flagOut == "" {
 		c.runFuzzer()
@@ -56,15 +57,12 @@ func main() {
 
 // Context holds state for a go-fuzz-build run.
 type Context struct {
-	targetPackages []*packages.Package // typechecked root packages
-	runtimePackage []*packages.Package // the fuzzer itself
-
 	workdir string
 }
 
 // loadPkg loads, parses, and typechecks pkg (the package containing the Fuzz function),
 // go-fuzz-dep, and their dependencies.
-func (c *Context) loadPkg(targetPackages []string) {
+func (c *Context) loadPkg(pattern []string) ([]*packages.Package, []*packages.Package) {
 	// Load, parse, and type-check all packages.
 	// We'll use the type information later.
 	// This also provides better error messages in the case
@@ -82,20 +80,22 @@ func (c *Context) loadPkg(targetPackages []string) {
 	}
 
 	var err error
-	c.targetPackages, err = packages.Load(cfg, targetPackages...)
+	targetPackages, err := packages.Load(cfg, pattern...)
 	if err != nil {
 		c.failf("could not load packages: %v", err)
 	}
 
 	// Stop if any package had errors.
-	if packages.PrintErrors(c.targetPackages) > 0 {
+	if packages.PrintErrors(targetPackages) > 0 {
 		c.failf("typechecking of %v failed", targetPackages)
 	}
 
-	c.runtimePackage, err = packages.Load(cfg, "github.com/bradleyjkemp/simple-fuzz/runtime")
+	runtimePackage, err := packages.Load(cfg, "github.com/bradleyjkemp/simple-fuzz/runtime")
 	if err != nil {
 		c.failf("could not load runtime package: %v", err)
 	}
+
+	return targetPackages, runtimePackage
 }
 
 // Based on isTest from GOROOT/src/cmd/go/internal/load/test.go.
@@ -126,7 +126,7 @@ func (c *Context) makeWorkdir() {
 }
 
 // populateWorkdir prepares workdir for builds.
-func (c *Context) populateWorkdir() {
+func (c *Context) populateWorkdir(runtimePackage []*packages.Package) {
 	out, err := exec.Command("go", "env", "GOROOT").CombinedOutput()
 	if err != nil || len(out) == 0 {
 		c.failf("failed to locate GOROOT/GOPATH: 'go env' returned '%s' (%v)", out, err)
@@ -155,7 +155,7 @@ func (c *Context) populateWorkdir() {
 	// we could instead just os.MkdirAll and copy non-Go files here.
 	// We'd still need to do a full package clone for packages that
 	// we aren't instrumenting (c.ignore).
-	packages.Visit(c.runtimePackage, nil, func(p *packages.Package) {
+	packages.Visit(runtimePackage, nil, func(p *packages.Package) {
 		c.clonePackage(p)
 	})
 }
@@ -191,11 +191,11 @@ func (c *Context) buildFuzzer() {
 	}
 }
 
-func (c *Context) calcIgnore() func(string) bool {
+func (c *Context) calcIgnore(allPackages []*packages.Package) func(string) bool {
 	ignore := map[string]bool{}
 	// These are either incredibly noisy or break when instrumented
 
-	badPackages := c.packagesNamed(
+	badPackages := packagesNamed(allPackages,
 		"os",
 		"syscall",
 		"bytes",
@@ -267,7 +267,7 @@ func (c *Context) clonePackage(p *packages.Package) {
 }
 
 // packagesNamed extracts the packages listed in paths.
-func (c *Context) packagesNamed(paths ...string) (pkgs []*packages.Package) {
+func packagesNamed(allPackages []*packages.Package, paths ...string) (pkgs []*packages.Package) {
 	pre := func(p *packages.Package) bool {
 		for _, path := range paths {
 			if p.PkgPath == path {
@@ -277,11 +277,11 @@ func (c *Context) packagesNamed(paths ...string) (pkgs []*packages.Package) {
 		}
 		return len(pkgs) < len(paths) // continue only if we have not succeeded yet
 	}
-	packages.Visit(append(c.targetPackages, c.runtimePackage...), pre, nil)
+	packages.Visit(allPackages, pre, nil)
 	return pkgs
 }
 
-func (c *Context) instrumentPackages(isIgnored func(string) bool) []string {
+func (c *Context) instrumentPackages(targets []*packages.Package, isIgnored func(string) bool) []string {
 	var fuzzTargets []string
 	visit := func(pkg *packages.Package) {
 		c.clonePackage(pkg) // TODO: avoid copying files that are immediately re-written
@@ -320,7 +320,7 @@ func (c *Context) instrumentPackages(isIgnored func(string) bool) []string {
 		}
 	}
 
-	packages.Visit(c.targetPackages, nil, visit)
+	packages.Visit(targets, nil, visit)
 	return fuzzTargets
 }
 
