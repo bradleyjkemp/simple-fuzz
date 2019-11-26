@@ -38,13 +38,14 @@ func main() {
 		pkgs = []string{"."}
 	}
 
-	c.loadPkg(pkgs)                        // load and typecheck pkg
-	c.calcIgnore()                         // calculate set of packages to ignore
-	c.makeWorkdir()                        // create workdir
-	defer os.RemoveAll(c.workdir)          // delete workdir
-	c.populateWorkdir()                    // copy tools and packages to workdir as needed
-	fuzzPackages := c.instrumentPackages() // instrument target packages and find fuzz funcs
-	c.createGeneratedFiles(fuzzPackages)   // create the files to register targets with the fuzzer
+	c.loadPkg(pkgs)                               // load and typecheck pkg
+	ignored := c.calcIgnore()                     // calculate set of packages to ignore
+	c.makeWorkdir()                               // create workdir
+	defer os.RemoveAll(c.workdir)                 // delete workdir
+	c.populateWorkdir()                           // copy tools and packages to workdir as needed
+	fuzzPackages := c.instrumentPackages(ignored) // instrument target packages and find fuzz funcs
+	literals := c.gatherLiterals(ignored)
+	c.createGeneratedFiles(literals, fuzzPackages) // create the files to register targets with the fuzzer
 
 	if *flagOut == "" {
 		c.runFuzzer()
@@ -58,15 +59,7 @@ type Context struct {
 	targetPackages []*packages.Package // typechecked root packages
 	runtimePackage []*packages.Package // the fuzzer itself
 
-	ignore map[string]bool // set of packages to ignore during instrumentation
-
 	workdir string
-}
-
-func (c *Context) isIgnored(pkg string) bool {
-	return strings.HasPrefix(pkg, "internal/") ||
-		strings.HasPrefix(pkg, "runtime/") ||
-		c.ignore[pkg]
 }
 
 // loadPkg loads, parses, and typechecks pkg (the package containing the Fuzz function),
@@ -198,8 +191,8 @@ func (c *Context) buildFuzzer() {
 	}
 }
 
-func (c *Context) calcIgnore() {
-	c.ignore = map[string]bool{}
+func (c *Context) calcIgnore() func(string) bool {
+	ignore := map[string]bool{}
 	// These are either incredibly noisy or break when instrumented
 
 	badPackages := c.packagesNamed(
@@ -208,18 +201,24 @@ func (c *Context) calcIgnore() {
 		"bytes",
 	)
 	packages.Visit(badPackages, func(p *packages.Package) bool {
-		c.ignore[p.PkgPath] = true
+		ignore[p.PkgPath] = true
 		return true
 	}, nil)
 
 	// Ignore any packages requested explicitly by the user.
 	paths := strings.Split(*flagPreserve, ",")
 	for _, path := range paths {
-		c.ignore[path] = true
+		ignore[path] = true
+	}
+
+	return func(pkg string) bool {
+		return strings.HasPrefix(pkg, "internal/") ||
+			strings.HasPrefix(pkg, "runtime/") ||
+			ignore[pkg]
 	}
 }
 
-func (c *Context) createGeneratedFiles(fuzzPackages []string) {
+func (c *Context) createGeneratedFiles(literals []string, fuzzPackages []string) {
 	// Runtime needs to import all packages containing a fuzz function
 	runtimeDir := filepath.Join(c.workdir, "src/github.com/bradleyjkemp/simple-fuzz/runtime")
 	imports := &bytes.Buffer{}
@@ -232,7 +231,7 @@ func (c *Context) createGeneratedFiles(fuzzPackages []string) {
 	// Write the generated file that will populate Literals
 	coverageDir := filepath.Join(c.workdir, "src/github.com/bradleyjkemp/simple-fuzz/coverage")
 	lits := &bytes.Buffer{}
-	err = literalsTmpl.Execute(lits, c.gatherLiterals())
+	err = literalsTmpl.Execute(lits, literals)
 	if err != nil {
 		c.failf("failed to execute literals template: %v", err)
 	}
@@ -282,11 +281,11 @@ func (c *Context) packagesNamed(paths ...string) (pkgs []*packages.Package) {
 	return pkgs
 }
 
-func (c *Context) instrumentPackages() []string {
+func (c *Context) instrumentPackages(isIgnored func(string) bool) []string {
 	var fuzzTargets []string
 	visit := func(pkg *packages.Package) {
 		c.clonePackage(pkg) // TODO: avoid copying files that are immediately re-written
-		if c.isIgnored(pkg.PkgPath) {
+		if isIgnored(pkg.PkgPath) {
 			return
 		}
 

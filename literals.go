@@ -9,7 +9,7 @@ import (
 	"golang.org/x/tools/go/packages"
 )
 
-func (c *Context) gatherLiterals() []string {
+func (c *Context) gatherLiterals(isIgnored func(string) bool) []string {
 	nolits := map[string]bool{
 		"math":    true,
 		"os":      true,
@@ -18,7 +18,7 @@ func (c *Context) gatherLiterals() []string {
 
 	lits := make(map[string]struct{})
 	visit := func(pkg *packages.Package) {
-		if c.isIgnored(pkg.PkgPath) || nolits[pkg.PkgPath] {
+		if isIgnored(pkg.PkgPath) || nolits[pkg.PkgPath] {
 			return
 		}
 		for _, f := range pkg.Syntax {
