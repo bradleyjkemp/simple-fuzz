@@ -332,30 +332,9 @@ func registerFuzzFuncs(pkg string, f *ast.File) bool {
 	var fuzzFuncs []ast.Stmt
 	for _, d := range f.Decls {
 		funcDecl, ok := d.(*ast.FuncDecl)
-		if !ok {
-			continue
-		}
-
-		if !isFuzzFuncName(funcDecl.Name.Name) || funcDecl.Recv != nil {
+		if !ok || !isFuzzFuncName(funcDecl.Name.Name) || funcDecl.Recv != nil {
 			// Shouldn't fuzz functions that aren't named FuzzCamelCase
 			// or any method receivers
-			continue
-		}
-
-		params := funcDecl.Type.Params.List
-		if len(params) != 1 {
-			// Doesn't have exactly one parameter
-			continue
-		}
-		param, ok := params[0].Type.(*ast.ArrayType)
-		if !ok || param.Len != nil {
-			// First param needs to be a slice type
-			continue
-		}
-
-		sliceType, ok := param.Elt.(*ast.Ident)
-		if !ok || sliceType.Name != "byte" {
-			// slice type is something odd like []struct{foo string}
 			continue
 		}
 
