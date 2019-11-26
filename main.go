@@ -148,12 +148,12 @@ func (c *Context) populateWorkdir() {
 
 	// TODO: See if we can avoid making toolchain copies,
 	// using some combination of env vars and toolexec.
-	c.copyDir(filepath.Join(goroot, "pkg", "tool"), filepath.Join(c.workdir, "goroot", "pkg", "tool"))
+	c.copyDir(filepath.Join(goroot, "pkg", "tool"), filepath.Join(c.workdir, "pkg", "tool"))
 	if _, err := os.Stat(filepath.Join(goroot, "pkg", "include")); err == nil {
-		c.copyDir(filepath.Join(goroot, "pkg", "include"), filepath.Join(c.workdir, "goroot", "pkg", "include"))
+		c.copyDir(filepath.Join(goroot, "pkg", "include"), filepath.Join(c.workdir, "pkg", "include"))
 	} else {
 		// Cross-compilation is not implemented.
-		c.copyDir(filepath.Join(goroot, "pkg", runtime.GOOS+"_"+runtime.GOARCH), filepath.Join(c.workdir, "goroot", "pkg", runtime.GOOS+"_"+runtime.GOARCH))
+		c.copyDir(filepath.Join(goroot, "pkg", runtime.GOOS+"_"+runtime.GOARCH), filepath.Join(c.workdir, "pkg", runtime.GOOS+"_"+runtime.GOARCH))
 	}
 
 	// Clone our package, go-fuzz-deps, and all dependencies.
@@ -170,8 +170,7 @@ func (c *Context) populateWorkdir() {
 func (c *Context) runFuzzer() {
 	cmd := exec.Command("go", "run", "-trimpath", "github.com/bradleyjkemp/simple-fuzz/runtime")
 	cmd.Env = append(os.Environ(),
-		"GOROOT="+filepath.Join(c.workdir, "goroot"),
-		"GOPATH="+filepath.Join(c.workdir, "gopath"),
+		"GOROOT="+filepath.Join(c.workdir),
 		"GO111MODULE=off", // we have constructed a non-module, GOPATH environment
 	)
 	cmd.Stdout = os.Stdout
@@ -191,8 +190,7 @@ func (c *Context) runFuzzer() {
 func (c *Context) buildFuzzer() {
 	cmd := exec.Command("go", "build", "-trimpath", "-o", *flagOut, "github.com/bradleyjkemp/simple-fuzz/runtime")
 	cmd.Env = append(os.Environ(),
-		"GOROOT="+filepath.Join(c.workdir, "goroot"),
-		"GOPATH="+filepath.Join(c.workdir, "gopath"),
+		"GOROOT="+filepath.Join(c.workdir),
 		"GO111MODULE=off", // we have constructed a non-module, GOPATH environment
 	)
 	if out, err := cmd.CombinedOutput(); err != nil {
@@ -223,7 +221,7 @@ func (c *Context) calcIgnore() {
 
 func (c *Context) createGeneratedFiles(fuzzPackages []string) {
 	// Runtime needs to import all packages containing a fuzz function
-	runtimeDir := filepath.Join(c.workdir, "goroot/src/github.com/bradleyjkemp/simple-fuzz/runtime")
+	runtimeDir := filepath.Join(c.workdir, "src/github.com/bradleyjkemp/simple-fuzz/runtime")
 	imports := &bytes.Buffer{}
 	err := importsTmpl.Execute(imports, fuzzPackages)
 	if err != nil {
@@ -232,7 +230,7 @@ func (c *Context) createGeneratedFiles(fuzzPackages []string) {
 	c.writeFile(filepath.Join(runtimeDir, "imports.go"), imports.Bytes())
 
 	// Write the generated file that will populate Literals
-	coverageDir := filepath.Join(c.workdir, "goroot/src/github.com/bradleyjkemp/simple-fuzz/coverage")
+	coverageDir := filepath.Join(c.workdir, "src/github.com/bradleyjkemp/simple-fuzz/coverage")
 	lits := &bytes.Buffer{}
 	err = literalsTmpl.Execute(lits, c.gatherLiterals())
 	if err != nil {
@@ -242,7 +240,7 @@ func (c *Context) createGeneratedFiles(fuzzPackages []string) {
 }
 
 func (c *Context) clonePackage(p *packages.Package) {
-	newDir := filepath.Join(c.workdir, "goroot", "src", p.PkgPath)
+	newDir := filepath.Join(c.workdir, "src", p.PkgPath)
 	c.mkdirAll(newDir)
 
 	if p.PkgPath == "unsafe" {
@@ -292,7 +290,7 @@ func (c *Context) instrumentPackages() []string {
 			return
 		}
 
-		path := filepath.Join(c.workdir, "goroot", "src", pkg.PkgPath) // TODO: need filepath.FromSlash for pkg.PkgPath?
+		path := filepath.Join(c.workdir, "src", pkg.PkgPath) // TODO: need filepath.FromSlash for pkg.PkgPath?
 
 		for i, fullName := range pkg.CompiledGoFiles {
 			fname := filepath.Base(fullName)
