@@ -15,10 +15,7 @@ import (
 	"github.com/maruel/panicparse/stack"
 )
 
-// triageInput processes every new input.
-// It calculates per-input metrics like execution time, coverage mask,
-// and minimizes the input to the minimal input with the same coverage.
-func (f *Fuzzer) triageInput(data []byte) {
+func (f *Fuzzer) processInput(data []byte) {
 	if len(data) > MaxInputSize {
 		data = data[:MaxInputSize]
 	}

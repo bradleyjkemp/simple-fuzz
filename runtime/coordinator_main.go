@@ -75,7 +75,7 @@ func main() {
 			break
 		}
 		f.broadcastStats()
-		f.triageInput(a)
+		f.processInput(a)
 	}
 
 	for shutdown.Err() == nil {
@@ -101,13 +101,13 @@ func main() {
 			if *flagV >= 2 {
 				log.Printf("worker triages local input [%v]%x", len(input), hash(input))
 			}
-			f.triageInput(input)
+			f.processInput(input)
 			continue
 		}
 
 		// Plain old blind fuzzing.
 		data := f.mutator.generate(f.storage, Literals)
-		f.triageInput(data)
+		f.processInput(data)
 	}
 }
 
