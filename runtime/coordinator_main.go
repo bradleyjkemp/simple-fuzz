@@ -78,6 +78,10 @@ func main() {
 		f.processInput(a)
 	}
 
+	f.mainLoop()
+}
+
+func (f *Fuzzer) mainLoop() {
 	for shutdown.Err() == nil {
 		f.broadcastStats()
 		if *flagV >= 1 {
