@@ -193,16 +193,6 @@ func (f *Fuzzer) runFuzzFunc(input []byte) (cover, output []byte, crashed, hange
 	return
 }
 
-func (f *Fuzzer) noteNewInput(data, cover []byte, res int) {
-	if res < 0 {
-		// User said to not add this input to corpus.
-		return
-	}
-	if f.improvesMaxCover(cover) {
-		f.triageQueue = append(f.triageQueue, makeCopy(data))
-	}
-}
-
 func (f *Fuzzer) noteCrasher(data, output []byte, hanged bool) {
 	supp := extractSuppression(output)
 	if _, ok := f.suppressedSigs[hash(supp)]; ok {
