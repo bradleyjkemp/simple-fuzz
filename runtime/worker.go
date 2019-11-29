@@ -34,7 +34,7 @@ func (f *Fuzzer) processInput(data []byte) {
 	copy(inputcover, cover) // cover is shared memory so needs to be copied
 
 	// Only want input if it hits something new
-	if !compareCover(f.maxCover, inputcover) {
+	if !f.improvesMaxCover(inputcover) {
 		return
 	}
 
@@ -198,7 +198,7 @@ func (f *Fuzzer) noteNewInput(data, cover []byte, res int) {
 		// User said to not add this input to corpus.
 		return
 	}
-	if compareCover(f.maxCover, cover) {
+	if f.improvesMaxCover(cover) {
 		f.triageQueue = append(f.triageQueue, makeCopy(data))
 	}
 }

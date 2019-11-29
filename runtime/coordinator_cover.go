@@ -13,12 +13,12 @@ func makeCopy(data []byte) []byte {
 	return append([]byte{}, data...)
 }
 
-func compareCover(base, cur []byte) bool {
-	if len(base) != CoverSize || len(cur) != CoverSize {
-		log.Fatalf("bad cover table size (%v, %v)", len(base), len(cur))
+func (f *Fuzzer) improvesMaxCover(new []byte) bool {
+	if len(new) != CoverSize {
+		log.Fatalf("bad cover table size (%v)", len(new))
 	}
-	for i, v := range base {
-		if cur[i] > v {
+	for i, v := range f.maxCover {
+		if new[i] > v {
 			return true
 		}
 	}
