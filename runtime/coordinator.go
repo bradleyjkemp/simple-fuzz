@@ -22,7 +22,6 @@ type Fuzzer struct {
 
 	lastSync time.Time
 	execs    uint64
-	restarts uint64
 
 	storage *storage
 
@@ -35,7 +34,7 @@ type Fuzzer struct {
 }
 
 func (f *Fuzzer) broadcastStats() {
-	if time.Since(f.lastSync) < syncPeriod {
+	if time.Since(f.lastSync) < 3*time.Second {
 		return
 	}
 	f.lastSync = time.Now()

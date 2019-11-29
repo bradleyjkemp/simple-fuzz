@@ -15,10 +15,6 @@ import (
 	"github.com/maruel/panicparse/stack"
 )
 
-const (
-	syncPeriod = 3 * time.Second
-)
-
 // triageInput processes every new input.
 // It calculates per-input metrics like execution time, coverage mask,
 // and minimizes the input to the minimal input with the same coverage.
