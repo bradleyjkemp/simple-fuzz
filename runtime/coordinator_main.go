@@ -106,7 +106,7 @@ func main() {
 		}
 
 		// Plain old blind fuzzing.
-		data := f.mutator.generate(f.storage.corpusInputs, Literals)
+		data := f.mutator.generate(f.storage, Literals)
 		f.triageInput(data)
 	}
 }

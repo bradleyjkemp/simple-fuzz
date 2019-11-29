@@ -27,6 +27,9 @@ type storage struct {
 	suppressions map[string]bool
 	corpus       map[Sig][]byte
 	corpusInputs [][]byte
+
+	currentInputID    int
+	currentInputCount int
 }
 
 type crasherMetadata struct {
@@ -57,6 +60,20 @@ func newStorage() (*storage, error) {
 	}
 
 	return s, nil
+}
+
+func (s *storage) getNextInput() []byte {
+	if s.currentInputCount > 0 {
+		s.currentInputCount--
+		return s.corpusInputs[s.currentInputID]
+	}
+
+	s.currentInputID++
+	if s.currentInputID >= len(s.corpusInputs) {
+		s.currentInputID = 0
+	}
+	s.currentInputCount = s.currentInputID + len(s.corpusInputs)/2 + 1
+	return s.getNextInput()
 }
 
 func (s *storage) addInput(input []byte) error {

@@ -46,8 +46,9 @@ func (m *Mutator) randByteOrder() binary.ByteOrder {
 	return binary.BigEndian
 }
 
-func (m *Mutator) generate(corpus [][]byte, lits []string) []byte {
-	data := corpus[m.rand(len(corpus))]
+func (m *Mutator) generate(storage *storage, lits []string) []byte {
+	corpus := storage.corpusInputs
+	data := storage.getNextInput()
 	res := make([]byte, len(data))
 	copy(res, data)
 	nm := 1 + m.Exp2()
