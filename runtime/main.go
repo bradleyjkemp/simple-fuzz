@@ -65,17 +65,17 @@ func main() {
 	}
 	go f.watchForHangingInputs()
 
-	if len(f.storage.corpus) == 0 {
-		f.storage.addInput([]byte{})
+	if len(f.storage.initialCorpus) == 0 {
+		f.storage.initialCorpus = append(f.storage.initialCorpus, []byte{})
 	}
 
 	//Triage the initial corpus.
-	for _, a := range f.storage.corpus {
+	for _, a := range f.storage.initialCorpus {
 		if shutdown.Err() != nil {
 			break
 		}
 		f.broadcastStats()
-		f.processInput(a)
+		f.processInput(a, true)
 	}
 
 	f.mainLoop()
@@ -105,13 +105,13 @@ func (f *Fuzzer) mainLoop() {
 			if *flagV >= 2 {
 				log.Printf("worker triages local input [%v]%x", len(input), hash(input))
 			}
-			f.processInput(input)
+			f.processInput(input, false)
 			continue
 		}
 
 		// Plain old blind fuzzing.
 		data := f.mutator.generate(f.storage, Literals)
-		f.processInput(data)
+		f.processInput(data, false)
 	}
 }
 

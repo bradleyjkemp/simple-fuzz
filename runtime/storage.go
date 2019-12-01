@@ -21,12 +21,13 @@ func hash(data []byte) Sig {
 }
 
 type storage struct {
-	crashersDir  string
-	corpusDir    string
-	crashers     map[Sig][]byte
-	suppressions map[string]bool
-	corpus       map[Sig][]byte
-	corpusInputs [][]byte
+	initialCorpus [][]byte
+	crashersDir   string
+	corpusDir     string
+	crashers      map[Sig][]byte
+	suppressions  map[string]bool
+	corpus        map[Sig][]byte
+	corpusInputs  [][]byte
 
 	currentInputID    int
 	currentInputCount int
@@ -171,5 +172,6 @@ func (s *storage) corpusWalker(path string, info os.FileInfo, err error) error {
 		return err
 	}
 
-	return s.addInput(contents)
+	s.initialCorpus = append(s.initialCorpus, contents)
+	return nil
 }

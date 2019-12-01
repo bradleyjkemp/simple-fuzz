@@ -15,7 +15,7 @@ import (
 	"github.com/maruel/panicparse/stack"
 )
 
-func (f *Fuzzer) processInput(data []byte) {
+func (f *Fuzzer) processInput(data []byte, initialCorpus bool) {
 	if len(data) > MaxInputSize {
 		data = data[:MaxInputSize]
 	}
@@ -33,8 +33,8 @@ func (f *Fuzzer) processInput(data []byte) {
 	inputcover := make([]byte, CoverSize)
 	copy(inputcover, cover) // cover is shared memory so needs to be copied
 
-	// Only want input if it hits something new
-	if !f.improvesMaxCover(inputcover) {
+	// Only want input if it hits something new or it is part of the initial corpus
+	if !f.improvesMaxCover(inputcover) && !initialCorpus {
 		return
 	}
 
