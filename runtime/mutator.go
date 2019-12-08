@@ -47,7 +47,7 @@ func (m *Mutator) randByteOrder() binary.ByteOrder {
 }
 
 func (m *Mutator) generate(storage *storage, lits []string) []byte {
-	corpus := storage.corpusInputs
+	corpus := storage.corpusItems
 	data := storage.getNextInput()
 	res := make([]byte, len(data))
 	copy(res, data)
@@ -301,7 +301,7 @@ func (m *Mutator) generate(storage *storage, lits []string) []byte {
 				iter--
 				continue
 			}
-			other := corpus[m.rand(len(corpus))]
+			other := corpus[m.rand(len(corpus))].data
 			if len(other) < 4 || &res[0] == &other[0] {
 				iter--
 				continue
@@ -328,7 +328,7 @@ func (m *Mutator) generate(storage *storage, lits []string) []byte {
 				iter--
 				continue
 			}
-			other := corpus[m.rand(len(corpus))]
+			other := corpus[m.rand(len(corpus))].data
 			if len(other) < 4 || &res[0] == &other[0] {
 				iter--
 				continue

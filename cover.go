@@ -178,11 +178,17 @@ func newCounter() ast.Stmt {
 
 	return &ast.BlockStmt{
 		List: []ast.Stmt{
-			// Increment the coverage table
-			&ast.IncDecStmt{
-				X:   counter,
-				Tok: token.INC,
+			// Set the entry in coverage table
+			&ast.AssignStmt{
+				Lhs: []ast.Expr{counter},
+				Tok: token.ASSIGN,
+				Rhs: []ast.Expr{&ast.BasicLit{Value: "1", Kind: token.INT}},
 			},
+			//// Increment the coverage table
+			//&ast.IncDecStmt{
+			//	X:   counter,
+			//	Tok: token.INC,
+			//},
 			// PreviousLocationID = currentLocation >> 1
 			&ast.AssignStmt{
 				Lhs: []ast.Expr{previousLocation},

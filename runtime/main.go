@@ -70,12 +70,13 @@ func main() {
 	}
 
 	//Triage the initial corpus.
-	for _, a := range f.storage.initialCorpus {
+	for len(f.storage.initialCorpus) > 0 {
+		data := f.storage.initialCorpus[0]
+		f.storage.initialCorpus = f.storage.initialCorpus[1:]
 		if shutdown.Err() != nil {
 			break
 		}
-		f.broadcastStats()
-		f.processInput(a, true)
+		f.processInput(data, true)
 	}
 
 	f.mainLoop()

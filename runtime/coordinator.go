@@ -50,7 +50,7 @@ func (f *Fuzzer) broadcastStats() {
 	execsPerSec := float64(f.execs) * 1e9 / float64(time.Since(f.startTime))
 	fmt.Printf("corpus: %v (%v ago), crashers: %v,"+
 		" execs: %v (%.0f/sec), cover: %v, uptime: %v\n",
-		len(f.storage.corpus), time.Since(f.lastInput).Truncate(time.Second),
+		len(f.storage.corpusItems)+len(f.storage.initialCorpus), time.Since(f.lastInput).Truncate(time.Second),
 		len(f.storage.crashers), f.execs, execsPerSec, cover,
 		time.Since(f.startTime).Truncate(time.Second),
 	)

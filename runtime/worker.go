@@ -38,7 +38,12 @@ func (f *Fuzzer) processInput(data []byte, initialCorpus bool) {
 		return
 	}
 
-	targetCover := findNewCover(f.maxCover, inputcover)
+	targetCover := inputcover
+	if !initialCorpus {
+		// If this is not part of the initial corpus then we only are care about
+		// the bits of the input that exercise new coverage
+		targetCover = findNewCover(f.maxCover, inputcover)
+	}
 	data = f.minimizeInput(data, false, func(candidate, cover, output []byte, crashed, hanged bool) bool {
 		if crashed {
 			f.noteCrasher(candidate, output, hanged)
@@ -55,7 +60,7 @@ func (f *Fuzzer) processInput(data []byte, initialCorpus bool) {
 	})
 
 	f.lastInput = time.Now()
-	f.storage.addInput(data)
+	f.storage.addInput(data, inputcover)
 	updateMaxCover(f.maxCover, inputcover)
 }
 
@@ -189,7 +194,8 @@ func (f *Fuzzer) runFuzzFunc(input []byte) (cover, output []byte, crashed, hange
 	}()
 	CoverTab = [CoverSize]byte{}
 	f.fuzzFunc(input[0:len(input):len(input)])
-	cover = (CoverTab)[:]
+	cover = makeCopy((CoverTab)[:])
+	f.storage.reportCoverage(cover)
 	return
 }
 

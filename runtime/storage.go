@@ -9,9 +9,11 @@ import (
 	"os"
 	"path/filepath"
 	"regexp"
+	"sort"
 	"strconv"
 	"strings"
 	"text/template"
+	"time"
 )
 
 type Sig [sha1.Size]byte
@@ -20,17 +22,27 @@ func hash(data []byte) Sig {
 	return Sig(sha1.Sum(data))
 }
 
+type corpusItem struct {
+	data           []byte
+	cover          []byte
+	coverFrequency *int
+}
+
 type storage struct {
 	initialCorpus [][]byte
 	crashersDir   string
 	corpusDir     string
 	crashers      map[Sig][]byte
 	suppressions  map[string]bool
-	corpus        map[Sig][]byte
-	corpusInputs  [][]byte
+	corpusItems   []*corpusItem
 
 	currentInputID    int
 	currentInputCount int
+
+	// Stores how many times each unique cover has been seen
+	// Used to prioritise mutating inputs which exercise rare paths
+	coverFrequencies map[Sig]*int
+	lastCorpusSort   time.Time
 }
 
 type crasherMetadata struct {
@@ -43,11 +55,11 @@ func newStorage() (*storage, error) {
 	crashersDir := filepath.Join(dir, "crashers")
 	corpusDir := filepath.Join(dir, "corpus")
 	s := &storage{
-		crashersDir:  crashersDir,
-		corpusDir:    corpusDir,
-		crashers:     map[Sig][]byte{},
-		suppressions: map[string]bool{},
-		corpus:       map[Sig][]byte{},
+		crashersDir:      crashersDir,
+		corpusDir:        corpusDir,
+		crashers:         map[Sig][]byte{},
+		suppressions:     map[string]bool{},
+		coverFrequencies: map[Sig]*int{},
 	}
 	os.MkdirAll(crashersDir, 0755)
 	os.MkdirAll(corpusDir, 0755)
@@ -63,33 +75,73 @@ func newStorage() (*storage, error) {
 	return s, nil
 }
 
+var (
+	minPriority = 100
+	maxPriority = 500 * minPriority
+)
+
 func (s *storage) getNextInput() []byte {
 	if s.currentInputCount > 0 {
 		s.currentInputCount--
-		return s.corpusInputs[s.currentInputID]
+		return s.corpusItems[s.currentInputID].data
 	}
 
 	s.currentInputID++
-	if s.currentInputID >= len(s.corpusInputs) {
+	if s.currentInputID >= len(s.corpusItems) {
+		if time.Since(s.lastCorpusSort) > 10*time.Second {
+			s.lastCorpusSort = time.Now()
+			s.sortCorpus()
+		}
 		s.currentInputID = 0
 	}
-	s.currentInputCount = s.currentInputID + len(s.corpusInputs)/2 + 1
+
+	maxFrequency := *s.corpusItems[0].coverFrequency
+	s.currentInputCount = maxFrequency / *s.corpusItems[s.currentInputID].coverFrequency
+
+	// Enforce a minimum number of iterations for performance reasons
+	if s.currentInputCount < minPriority {
+		s.currentInputCount = minPriority
+	}
+	// Cap the multiplier at 500x the lowest priority input to prevent starvation
+	// TODO: enforce a max time mutating each input
+	if s.currentInputCount > maxPriority {
+		s.currentInputCount = maxPriority
+	}
+
 	return s.getNextInput()
 }
 
-func (s *storage) addInput(input []byte) error {
-	if s.haveInput(input) {
-		return nil
-	}
-	s.corpusInputs = append(s.corpusInputs, input)
-	s.corpus[hash(input)] = input
-	filename := fmt.Sprintf("%x", hash(input))
+var missedCoverages int
+var hitCoverages int
 
+func (s *storage) reportCoverage(cover []byte) {
+	if count := s.coverFrequencies[hash(cover)]; count != nil {
+		*count++
+		hitCoverages++
+	} else {
+		missedCoverages++
+	}
+}
+
+func (s *storage) addInput(input, cover []byte) error {
+	coverFrequency := s.coverFrequencies[hash(cover)]
+	if coverFrequency == nil {
+		count := 1
+		s.coverFrequencies[hash(cover)] = &count
+		coverFrequency = &count
+	}
+	item := &corpusItem{data: input, cover: makeCopy(cover), coverFrequency: coverFrequency}
+	s.corpusItems = append(s.corpusItems, item)
+	filename := fmt.Sprintf("%x", hash(input))
 	return ioutil.WriteFile(filepath.Join(s.corpusDir, filename), input, 0644)
 }
 
-func (s *storage) haveInput(input []byte) bool {
-	return s.corpus[hash(input)] != nil
+func (s *storage) sortCorpus() {
+	// Sort by decreasing coverFrequencies value (i.e. so inputs that exercise rarer paths
+	// are nearer the end of the list)
+	sort.Slice(s.corpusItems, func(i, j int) bool {
+		return *(s.corpusItems[i].coverFrequency) > *s.corpusItems[j].coverFrequency
+	})
 }
 
 func (s *storage) addCrasher(input []byte, error []byte, hanging bool, suppression []byte) {
