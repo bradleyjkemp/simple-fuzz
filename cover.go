@@ -49,6 +49,28 @@ func instrumentFile(parsedFile *ast.File) {
 			//   PreviousLocationID := 0
 			// And a counter
 			n.Body.List = append([]ast.Stmt{newLastLocation(), newCounter()}, n.Body.List...)
+		case *ast.FuncLit:
+			// Add a declaration of:
+			//   PreviousLocationID := 0
+			// And a counter
+			n.Body.List = append([]ast.Stmt{newLastLocation(), newCounter()}, n.Body.List...)
+
+		case *ast.SwitchStmt:
+			hasDefault := false
+			for _, c := range n.Body.List {
+				if len(c.(*ast.CaseClause).List) == 0 {
+					// This switch already has a default clause
+					hasDefault = true
+					break
+				}
+			}
+			if !hasDefault {
+				// this switch doesn't have a default clause so add an empty one
+				n.Body.List = append(n.Body.List, &ast.CaseClause{
+					List: nil,
+					Body: []ast.Stmt{},
+				})
+			}
 
 		// Single case: inside a switch statement
 		case *ast.CaseClause:
@@ -59,6 +81,8 @@ func instrumentFile(parsedFile *ast.File) {
 			n.Body = append([]ast.Stmt{newCounter()}, n.Body...)
 
 		case *ast.ForStmt:
+			n.Body.List = append([]ast.Stmt{newCounter()}, n.Body.List...)
+		case *ast.RangeStmt:
 			n.Body.List = append([]ast.Stmt{newCounter()}, n.Body.List...)
 		}
 
